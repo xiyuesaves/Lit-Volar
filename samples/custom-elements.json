@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "2.1.0",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "./cem-widget.js",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "CemWidget",
+          "customElement": true,
+          "tagName": "cem-widget",
+          "description": "A component provided only by Custom Elements Manifest metadata.",
+          "attributes": [
+            { "name": "variant", "type": { "text": "'compact' | 'wide'" } }
+          ],
+          "members": [
+            { "kind": "field", "name": "count", "type": { "text": "number" }, "attribute": "count" }
+          ],
+          "events": [
+            { "name": "select", "type": { "text": "CustomEvent<string>" } }
+          ],
+          "slots": [
+            { "name": "header" }
+          ],
+          "cssParts": [
+            { "name": "label" }
+          ],
+          "cssProperties": [
+            { "name": "--cem-widget-color", "syntax": "<color>" }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "kind": "custom-element-definition",
+          "name": "cem-widget",
+          "declaration": { "name": "CemWidget", "module": "./cem-widget.js" }
+        }
+      ]
+    }
+  ]
+}

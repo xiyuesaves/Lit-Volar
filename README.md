@@ -8,6 +8,10 @@ Lit Volar is a VS Code extension that adds HTML, CSS, and SVG language features 
 - CSS features in `css` templates and nested `<style>` elements
 - SVG markup features in `svg` templates
 - Lit event (`@event`), property (`.property`), and boolean (`?attribute`) binding completions
+- Project-aware custom element metadata from TypeScript and Custom Elements Manifest files
+- Lit binding diagnostics, configurable rules, and quick fixes
+- Cross-file definitions and rename for templates, decorators, registrations, and `HTMLElementTagNameMap`
+- Slot, CSS part, and CSS custom property metadata
 - Completion, hover, diagnostics, formatting, document symbols, colors, and Emmet through Volar language services
 - TypeScript completion inside `${...}` expressions from VS Code's built-in TypeScript extension
 - Immediate TextMate highlighting for standard `html`, `raw`, `css`, and `svg` tag names
@@ -31,14 +35,18 @@ Useful manual checks in `samples/lit-demo.ts`:
 
 ## Configuration
 
-- `litVolar.htmlTemplateTags`: defaults to `html` and `raw`
-- `litVolar.cssTemplateTags`: defaults to `css`
-- `litVolar.svgTemplateTags`: defaults to `svg`
+- `litVolar.disable`, `litVolar.strict`, and `litVolar.rules`
+- `litVolar.htmlTemplateTags`, `litVolar.cssTemplateTags`, and `litVolar.svgTemplateTags`
+- `litVolar.customHtmlData` and `litVolar.customElementsManifests`
+- `litVolar.globalTags`, `litVolar.globalAttributes`, and `litVolar.globalEvents`
+- `litVolar.maxProjectImportDepth` and `litVolar.maxNodeModuleImportDepth`
+- `litVolar.securitySystem`, `litVolar.dontShowSuggestions`, and `litVolar.logging`
 
-Reload VS Code after changing template tag settings. Semantic features recognize configured aliases and qualified tags such as `lit.html`; TextMate highlighting is intentionally limited to the standard static tag names.
+Configuration and metadata changes restart the language server automatically. Rule values are `off`, `warning`, or `error`. The default profile enables only low-false-positive syntax checks; `strict` enables the full reference analyzer profile, and explicit rules always take precedence.
+
+The extension discovers `custom-elements.json`, `package.json#customElements`, imported dependency manifests, and configured manifest globs. Semantic features recognize configured aliases and qualified tags such as `lit.html`; TextMate highlighting remains limited to the standard static tag names.
 
 ## Current limitations
 
-- Custom element metadata is not yet generated from TypeScript or Custom Elements Manifest files.
 - Configured tag aliases receive semantic language features but no generated TextMate highlighting.
 - SVG uses the HTML language service's SVG-aware data rather than a separate XML language server.

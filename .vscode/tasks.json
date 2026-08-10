@@ -2,13 +2,21 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "npm",
-      "script": "watch",
+      "label": "pnpm: watch",
+      "type": "shell",
+      "command": "pnpm watch",
       "problemMatcher": "$tsc-watch",
       "isBackground": true,
       "presentation": {
         "reveal": "never"
       },
+      "group": "build"
+    },
+    {
+      "label": "pnpm: build",
+      "type": "shell",
+      "command": "pnpm build",
+      "problemMatcher": [],
       "group": "build"
     }
   ]

@@ -39,6 +39,106 @@
     "configuration": {
       "title": "Lit Volar",
       "properties": {
+        "litVolar.disable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable all Lit-specific project analysis while keeping generic embedded HTML, CSS, and SVG editing available."
+        },
+        "litVolar.strict": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the strict Lit analyzer rule profile. Explicit rule settings take precedence."
+        },
+        "litVolar.rules": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": false,
+          "properties": {
+            "no-unknown-tag-name": { "$ref": "#/definitions/ruleSeverity" },
+            "no-missing-import": { "$ref": "#/definitions/ruleSeverity" },
+            "no-unclosed-tag": { "$ref": "#/definitions/ruleSeverity" },
+            "no-unknown-attribute": { "$ref": "#/definitions/ruleSeverity" },
+            "no-unknown-property": { "$ref": "#/definitions/ruleSeverity" },
+            "no-unknown-event": { "$ref": "#/definitions/ruleSeverity" },
+            "no-unknown-slot": { "$ref": "#/definitions/ruleSeverity" },
+            "no-unintended-mixed-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-invalid-boolean-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-expressionless-property-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-noncallable-event-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-boolean-in-attribute-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-complex-attribute-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-nullable-attribute-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-incompatible-type-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-invalid-directive-binding": { "$ref": "#/definitions/ruleSeverity" },
+            "no-incompatible-property-type": { "$ref": "#/definitions/ruleSeverity" },
+            "no-invalid-attribute-name": { "$ref": "#/definitions/ruleSeverity" },
+            "no-invalid-tag-name": { "$ref": "#/definitions/ruleSeverity" },
+            "no-invalid-css": { "$ref": "#/definitions/ruleSeverity" },
+            "no-property-visibility-mismatch": { "$ref": "#/definitions/ruleSeverity" },
+            "no-legacy-attribute": { "$ref": "#/definitions/ruleSeverity" },
+            "no-missing-element-type-definition": { "$ref": "#/definitions/ruleSeverity" }
+          },
+          "description": "Per-rule Lit diagnostic severity."
+        },
+        "litVolar.securitySystem": {
+          "type": "string",
+          "enum": ["off", "ClosureSafeTypes"],
+          "default": "off",
+          "description": "Optional security type system used for binding checks."
+        },
+        "litVolar.globalTags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional tag names treated as globally available."
+        },
+        "litVolar.globalAttributes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional attributes accepted on every element."
+        },
+        "litVolar.globalEvents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional events accepted on every element."
+        },
+        "litVolar.customHtmlData": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "HTML custom data JSON files or globs, resolved relative to the project root."
+        },
+        "litVolar.customElementsManifests": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Custom Elements Manifest files or globs, resolved relative to the project root."
+        },
+        "litVolar.maxProjectImportDepth": {
+          "type": "integer",
+          "default": -1,
+          "minimum": -1,
+          "description": "Maximum dependency traversal depth inside the project. -1 means unlimited."
+        },
+        "litVolar.maxNodeModuleImportDepth": {
+          "type": "integer",
+          "default": 1,
+          "minimum": -1,
+          "description": "Maximum dependency traversal depth inside node_modules. -1 means unlimited."
+        },
+        "litVolar.dontShowSuggestions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable Lit project-specific suggestions."
+        },
+        "litVolar.logging": {
+          "type": "string",
+          "enum": ["off", "error", "warn", "debug", "verbose"],
+          "default": "off",
+          "description": "Lit analyzer logging level in the language server output channel."
+        },
         "litVolar.htmlTemplateTags": {
           "type": "array",
           "items": {
@@ -48,7 +148,7 @@
             "html",
             "raw"
           ],
-          "description": "Tagged template names treated as HTML. Reload the window after changing this setting."
+          "description": "Tagged template names treated as HTML."
         },
         "litVolar.cssTemplateTags": {
           "type": "array",
@@ -58,7 +158,7 @@
           "default": [
             "css"
           ],
-          "description": "Tagged template names treated as CSS. Reload the window after changing this setting."
+          "description": "Tagged template names treated as CSS."
         },
         "litVolar.svgTemplateTags": {
           "type": "array",
@@ -68,7 +168,13 @@
           "default": [
             "svg"
           ],
-          "description": "Tagged template names treated as SVG. Reload the window after changing this setting."
+          "description": "Tagged template names treated as SVG."
+        }
+      },
+      "definitions": {
+        "ruleSeverity": {
+          "type": "string",
+          "enum": ["off", "warning", "error"]
         }
       }
     },
@@ -141,13 +247,18 @@
     "@volar/language-core": "2.4.28",
     "@volar/language-server": "2.4.28",
     "@volar/language-service": "2.4.28",
+    "@volar/typescript": "2.4.28",
     "@volar/vscode": "2.4.28",
+    "custom-elements-manifest": "2.1.0",
+    "fast-glob": "3.3.3",
+    "lit-analyzer": "2.0.3",
     "typescript": "^5.9.2",
     "volar-service-css": "0.0.71",
     "volar-service-emmet": "0.0.71",
     "volar-service-html": "0.0.71",
     "vscode-html-languageservice": "5.6.2",
-    "vscode-uri": "^3.1.0"
+    "vscode-uri": "^3.1.0",
+    "web-component-analyzer": "2.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

@@ -5,6 +5,7 @@ import type {
   LanguagePlugin,
   VirtualCode,
 } from '@volar/language-core';
+import type {} from '@volar/typescript';
 import ts from 'typescript';
 import { getLanguageService, TextDocument, type Node as HtmlNode } from 'vscode-html-languageservice';
 import type { URI } from 'vscode-uri';
@@ -62,6 +63,16 @@ export function createLitLanguagePlugin(
     },
     updateVirtualCode(_uri, _virtualCode, snapshot) {
       return new LitRootVirtualCode(_virtualCode.languageId, snapshot, config);
+    },
+    typescript: {
+      extraFileExtensions: [],
+      getServiceScript(root) {
+        return {
+          code: root,
+          extension: extensionForLanguageId(root.languageId) as '.ts' | '.tsx' | '.js' | '.jsx',
+          scriptKind: scriptKindForLanguageId(root.languageId),
+        };
+      },
     },
   };
 }

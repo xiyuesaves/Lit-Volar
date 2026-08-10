@@ -8,6 +8,6 @@
     "useDefineForClassFields": false
   },
   "include": [
-    "lit-demo.ts"
+    "*.ts"
   ]
 }

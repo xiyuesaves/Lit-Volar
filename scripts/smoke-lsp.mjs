@@ -95,7 +95,7 @@ async function completionAt(sourceWithMarker, fileName) {
   const markerOffset = sourceWithMarker.indexOf('|');
   assert.notEqual(markerOffset, -1, 'Completion fixture must include a marker');
   const text = sourceWithMarker.slice(0, markerOffset) + sourceWithMarker.slice(markerOffset + 1);
-  const uri = pathToFileURL(path.resolve('.lsp-smoke', fileName)).href;
+  const uri = pathToFileURL(path.resolve(fileName.includes('/') ? fileName : path.join('.lsp-smoke', fileName))).href;
 
   notify('textDocument/didOpen', {
     textDocument: { uri, languageId: 'typescript', version: 1, text },
@@ -107,6 +107,42 @@ async function completionAt(sourceWithMarker, fileName) {
   });
   notify('textDocument/didClose', { textDocument: { uri } });
   return Array.isArray(completion) ? completion : completion?.items ?? [];
+}
+
+async function requestAt(sourceWithMarker, fileName, method, params = {}) {
+  const markerOffset = sourceWithMarker.indexOf('|');
+  assert.notEqual(markerOffset, -1, `${method} fixture must include a marker`);
+  const text = sourceWithMarker.slice(0, markerOffset) + sourceWithMarker.slice(markerOffset + 1);
+  const uri = pathToFileURL(path.resolve(fileName)).href;
+  notify('textDocument/didOpen', {
+    textDocument: { uri, languageId: 'typescript', version: 1, text },
+  });
+  const result = await request(method, {
+    textDocument: { uri },
+    position: positionAt(text, markerOffset),
+    ...params,
+  }, 20_000);
+  notify('textDocument/didClose', { textDocument: { uri } });
+  return result;
+}
+
+async function diagnosticsAndActions(sourceWithMarker, fileName) {
+  const markerOffset = sourceWithMarker.indexOf('|');
+  const text = sourceWithMarker.slice(0, markerOffset) + sourceWithMarker.slice(markerOffset + 1);
+  const uri = pathToFileURL(path.resolve(fileName)).href;
+  notify('textDocument/didOpen', {
+    textDocument: { uri, languageId: 'typescript', version: 1, text },
+  });
+  const report = await request('textDocument/diagnostic', { textDocument: { uri } }, 20_000);
+  const diagnostics = report?.items ?? [];
+  const target = diagnostics.find(item => item.code === 'no-missing-import');
+  const actions = target ? await request('textDocument/codeAction', {
+    textDocument: { uri },
+    range: target.range,
+    context: { diagnostics: [target], only: ['quickfix'], triggerKind: 1 },
+  }, 20_000) : [];
+  notify('textDocument/didClose', { textDocument: { uri } });
+  return { diagnostics, actions };
 }
 
 function labels(items) {
@@ -126,10 +162,18 @@ try {
             insertReplaceSupport: true,
           },
         },
+        diagnostic: {},
       },
       workspace: {},
     },
-    initializationOptions: { litVolar: {} },
+    initializationOptions: {
+      litVolar: {
+        rules: {
+          'no-missing-import': 'warning',
+          'no-incompatible-type-binding': 'error',
+        },
+      },
+    },
   });
   assert.ok(initializeResult.capabilities.completionProvider, 'Server did not advertise completion');
   notify('initialized', {});
@@ -164,6 +208,113 @@ try {
   );
   assert.equal(interpolationItems.length, 0, 'Volar should defer interpolation completion to TypeScript');
 
+  const projectTagItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<pro|`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(labels(projectTagItems).includes('project-card'), 'Project TypeScript metadata did not complete project-card');
+
+  const projectPropertyItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<project-card .ti|></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(labels(projectPropertyItems).includes('.title'), 'Project property completion did not include .title');
+
+  const cemTagItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<cem-|`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(labels(cemTagItems).includes('cem-widget'), 'CEM auto-discovery did not complete cem-widget');
+
+  const cemAttributeItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<cem-widget @se|></cem-widget>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(labels(cemAttributeItems).includes('@select'), 'CEM event completion did not include @select');
+
+  const cemSlotItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<cem-widget><span slot=\"he|\"></span></cem-widget>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(labels(cemSlotItems).includes('header'), 'CEM slot completion did not include header');
+
+  const cemCssItems = await completionAt(
+    "import { css } from 'lit'; const styles = css`:host { color: var(--cem-|) }`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(labels(cemCssItems).includes('--cem-widget-color'), 'CEM CSS property completion was missing');
+
+  const cemCssDefinition = await requestAt(
+    "import { css } from 'lit'; const styles = css`:host { color: var(--cem-widget-col|or) }`;",
+    'samples/project-consumer.ts',
+    'textDocument/definition',
+  );
+  assert.ok(Array.isArray(cemCssDefinition) && cemCssDefinition.some(item =>
+    (item.targetUri ?? item.uri)?.toLowerCase().includes('/samples/cem-widget.js')),
+    'CEM CSS property definition did not target its source module');
+
+  const projectCssDefinition = await requestAt(
+    "import { css } from 'lit'; const styles = css`:host { --card-accent: red; color: var(--card-acc|ent); }`;",
+    'samples/project-consumer.ts',
+    'textDocument/definition',
+  );
+  assert.ok(Array.isArray(projectCssDefinition) && projectCssDefinition.some(item =>
+    (item.targetUri ?? item.uri)?.toLowerCase().includes('/samples/project-consumer.ts')),
+    'Project CSS custom property definition was missing');
+
+  const hover = await requestAt(
+    "import { html } from 'lit'; const view = html`<cem-wid|get></cem-widget>`;",
+    'samples/project-consumer.ts',
+    'textDocument/hover',
+  );
+  assert.match(hover?.contents?.value ?? '', /Custom Elements Manifest/, 'CEM Hover documentation was missing');
+
+  const definition = await requestAt(
+    "import { html } from 'lit'; import './project-card'; const view = html`<project-c|ard></project-card>`;",
+    'samples/project-consumer.ts',
+    'textDocument/definition',
+  );
+  assert.ok(Array.isArray(definition) && definition.some(item =>
+    (item.targetUri ?? item.uri)?.toLowerCase().includes('/samples/project-card.ts')),
+    'Project tag definition did not target project-card.ts');
+
+  const rename = await requestAt(
+    "import { html } from 'lit'; import './project-card'; const view = html`<project-c|ard></project-card>`;",
+    'samples/project-consumer.ts',
+    'textDocument/rename',
+    { newName: 'renamed-card' },
+  );
+  assert.ok(rename?.changes && Object.keys(rename.changes).some(uri => uri.endsWith('/samples/project-card.ts')),
+    'Project rename did not include the component declaration file');
+
+  const analysis = await diagnosticsAndActions(
+    "import { html } from 'lit'; const view = html`<project-|card></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(analysis.diagnostics.some(item => item.code === 'no-missing-import'), 'Missing import diagnostic was not reported');
+  assert.ok(analysis.actions.some(action => action.edit), 'Missing import quick fix did not contain a WorkspaceEdit');
+
+  const bindingAnalysis = await diagnosticsAndActions(
+    "import { html } from 'lit'; import './project-card'; const view = html`<project-card .title=${123}|></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(bindingAnalysis.diagnostics.some(item => item.code === 'no-incompatible-type-binding'),
+    'Project binding type diagnostic was not reported');
+
+  const syntaxAnalysis = await diagnosticsAndActions(
+    "import { html } from 'lit'; const view = html`<div><div></div>|`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(syntaxAnalysis.diagnostics.some(item => item.code === 'no-unclosed-tag'),
+    'Default syntax profile did not report an unclosed tag');
+
+  const cssAnalysis = await diagnosticsAndActions(
+    "import { css } from 'lit'; const styles = css`:host { color: #xyz;| }`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(cssAnalysis.diagnostics.some(item => item.code === 'no-invalid-css' && item.source === 'lit-volar'),
+    'Modern CSS diagnostics were not wrapped as no-invalid-css');
+
   await request('shutdown', null);
   notify('exit');
   await new Promise((resolve, reject) => {
@@ -175,7 +326,7 @@ try {
     });
   });
 
-  console.log('LSP smoke passed: HTML, Lit bindings, CSS, nested style, SVG, interpolation isolation, and shutdown.');
+  console.log('LSP smoke passed: embedded services, project/CEM metadata, diagnostics, fixes, navigation, rename, and shutdown.');
 }
 catch (error) {
   child.kill();

@@ -16,6 +16,16 @@ export class ProjectCard extends LitElement {
   @property() title = '';
 
   @property({ type: Boolean }) active = false;
+
+  @property({ type: Number }) test = 0;
+
+  setActive(active: boolean) {
+    this.active = active;
+    /** Fired after the active state changes. */
+    this.dispatchEvent(new CustomEvent<{ active: boolean }>('activate', {
+      detail: { active },
+    }));
+  }
 }
 
 declare global {

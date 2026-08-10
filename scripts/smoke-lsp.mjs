@@ -126,6 +126,24 @@ async function requestAt(sourceWithMarker, fileName, method, params = {}) {
   return result;
 }
 
+async function autoInsertAt(sourceWithMarker, fileName) {
+  const markerOffset = sourceWithMarker.indexOf('|');
+  assert.notEqual(markerOffset, -1, 'Auto-insertion fixture must include a marker');
+  const text = sourceWithMarker.slice(0, markerOffset) + sourceWithMarker.slice(markerOffset + 1);
+  assert.equal(text[markerOffset - 1], '=', 'Auto-insertion marker must follow an equals sign');
+  const uri = pathToFileURL(path.resolve(fileName)).href;
+  notify('textDocument/didOpen', {
+    textDocument: { uri, languageId: 'typescript', version: 1, text },
+  });
+  const result = await request('volar/client/autoInsert', {
+    textDocument: { uri },
+    selection: positionAt(text, markerOffset),
+    change: { rangeOffset: markerOffset - 1, rangeLength: 0, text: '=' },
+  }, 20_000);
+  notify('textDocument/didClose', { textDocument: { uri } });
+  return result;
+}
+
 async function diagnosticsAndActions(sourceWithMarker, fileName) {
   const markerOffset = sourceWithMarker.indexOf('|');
   const text = sourceWithMarker.slice(0, markerOffset) + sourceWithMarker.slice(markerOffset + 1);
@@ -219,6 +237,31 @@ try {
     'samples/project-consumer.ts',
   );
   assert.ok(labels(projectPropertyItems).includes('.title'), 'Project property completion did not include .title');
+  const projectPropertyItem = projectPropertyItems.find(item => item.label === '.title');
+  const projectPropertyInsert = projectPropertyItem?.textEdit?.newText ?? projectPropertyItem?.insertText ?? '';
+  assert.match(projectPropertyInsert, /=\\\$\{\$0\}$/, 'Project property completion did not insert a Lit expression');
+
+  const projectTestPropertyItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<project-card .te|></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(labels(projectTestPropertyItems).includes('.test'), 'Project property completion did not include .test');
+  const projectTestAttributeItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<project-card te|></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(!labels(projectTestAttributeItems).includes('test'), 'Reactive project property was also suggested as an unprefixed attribute');
+
+  const projectPropertyAutoInsert = await autoInsertAt(
+    "import { html } from 'lit'; const view = html`<project-card .title=|></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.equal(projectPropertyAutoInsert, '\\${$0}', 'Known project property binding did not replace quotes with a Lit expression');
+  const unknownPropertyAutoInsert = await autoInsertAt(
+    "import { html } from 'lit'; const view = html`<project-card .missing=|></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.equal(unknownPropertyAutoInsert, '"$1"', 'Unknown property binding did not retain HTML quote insertion');
 
   const cemTagItems = await completionAt(
     "import { html } from 'lit'; const view = html`<cem-|`;",
@@ -231,6 +274,21 @@ try {
     'samples/project-consumer.ts',
   );
   assert.ok(labels(cemAttributeItems).includes('@select'), 'CEM event completion did not include @select');
+  const cemPropertyAttributeItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<cem-widget co|></cem-widget>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(!labels(cemPropertyAttributeItems).includes('count'), 'CEM property was also suggested as an unprefixed attribute');
+  const cemStandaloneAttributeItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<cem-widget va|></cem-widget>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(labels(cemStandaloneAttributeItems).includes('variant'), 'Standalone CEM attribute completion was incorrectly removed');
+  const cemPropertyAutoInsert = await autoInsertAt(
+    "import { html } from 'lit'; const view = html`<cem-widget .count=|></cem-widget>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.equal(cemPropertyAutoInsert, '\\${$0}', 'Known CEM property binding did not replace quotes with a Lit expression');
 
   const cemSlotItems = await completionAt(
     "import { html } from 'lit'; const view = html`<cem-widget><span slot=\"he|\"></span></cem-widget>`;",
@@ -268,6 +326,22 @@ try {
     'textDocument/hover',
   );
   assert.match(hover?.contents?.value ?? '', /Custom Elements Manifest/, 'CEM Hover documentation was missing');
+
+  const litInstanceHover = await requestAt(
+    "import { html } from 'lit'; import './project-card'; const view = html`<project-c|ard></project-card>`;",
+    'samples/project-consumer.ts',
+    'textDocument/hover',
+  );
+  const litInstanceText = litInstanceHover?.contents?.value ?? '';
+  assert.equal(litInstanceHover?.contents?.kind, 'markdown', 'Lit instance Hover was not normalized as highlighted Markdown');
+  assert.match(litInstanceText, /^```typescript/m, 'Lit instance Hover did not request TypeScript code highlighting');
+  assert.equal((litInstanceText.match(/const projectCard:/g) ?? []).length, 1, 'Lit instance Hover returned duplicate Quick Info');
+  assert.match(litInstanceText, /^const projectCard: \{/m, 'Lit instance Hover did not use TypeScript Quick Info shape');
+  assert.match(litInstanceText, /title: string;/, 'Lit instance Hover did not show public reactive properties');
+  assert.match(litInstanceText, /active: boolean;/, 'Lit instance Hover did not show boolean inputs');
+  assert.match(litInstanceText, /"@activate": CustomEvent<\{ active: boolean; \}>;/, 'Lit instance Hover did not show event payload types');
+  assert.doesNotMatch(litInstanceText, /\/\/ attribute:/, 'Lit instance Hover included generated attribute comments');
+  assert.doesNotMatch(litInstanceText, /Inheritance|Declared in|\| Binding \|/, 'Lit instance Hover included documentation UI instead of Quick Info');
 
   const definition = await requestAt(
     "import { html } from 'lit'; import './project-card'; const view = html`<project-c|ard></project-card>`;",
@@ -326,7 +400,7 @@ try {
     });
   });
 
-  console.log('LSP smoke passed: embedded services, project/CEM metadata, diagnostics, fixes, navigation, rename, and shutdown.');
+  console.log('LSP smoke passed: embedded services, project/CEM metadata, binding insertion, diagnostics, fixes, navigation, rename, and shutdown.');
 }
 catch (error) {
   child.kill();

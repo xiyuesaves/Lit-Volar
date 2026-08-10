@@ -21,6 +21,7 @@ import {
 } from 'lit-analyzer';
 import type ts from 'typescript';
 import { URI } from 'vscode-uri';
+import type { ComponentDefinition, ComponentEvent, ComponentMember } from 'web-component-analyzer';
 import { loadCemProjectData, resolveConfigPaths, type CemElement, type CemFeature, type CemProjectData } from './cemData';
 import type { LitVolarConfig } from './config';
 import { typescriptInjectionKeys } from './typescriptBridge';
@@ -48,6 +49,7 @@ export function createLitProjectService(
     name: 'lit-volar-project',
     capabilities: {
       completionProvider: { triggerCharacters: ['<', ' ', '.', '?', '@', '-', '"', "'"] },
+      autoInsertionProvider: { triggerCharacters: ['='] },
       hoverProvider: true,
       diagnosticProvider: { interFileDependencies: true, workspaceDiagnostics: false },
       codeActionProvider: { codeActionKinds: ['quickfix'] },
@@ -144,6 +146,28 @@ export function createLitProjectService(
 
       return {
         isAdditionalCompletion: true,
+        provideAutoInsertSnippet(document, position, lastChange, token) {
+          if (document.languageId !== 'html'
+            || token.isCancellationRequested
+            || lastChange.rangeLength !== 0
+            || !lastChange.text.endsWith('=')
+            || document.offsetAt(position) !== lastChange.rangeOffset + lastChange.text.length) return;
+          const documentOffset = document.offsetAt(position);
+          const binding = litBindingAtOffset(document.getText(), documentOffset);
+          if (!binding) return;
+          const source = sourceFileForDocument(document, token);
+          if (!source) return;
+          const sourceOffset = source.sourceOffset(position);
+          if (sourceOffset === undefined) return;
+          return safely(undefined, () => {
+            // Refresh the analyzer's component store before reading the tag definition.
+            analyzer.getQuickInfoAtPosition(source.file, sourceOffset);
+            const definition = analyzerContext.definitionStore.getDefinitionForTagName(binding.tagName);
+            const cemElement = cemData.elements.get(binding.tagName);
+            return isKnownLitBinding(binding, definition, cemElement) ? '\\${$0}' : undefined;
+          });
+        },
+
         provideCompletionItems(document, position, _completionContext, token) {
           if (config.dontShowSuggestions) return { isIncomplete: false, items: [] };
           const source = sourceFileForDocument(document, token);
@@ -152,8 +176,13 @@ export function createLitProjectService(
           const offset = source.sourceOffset(position);
           if (offset === undefined) return;
           return safely({ isIncomplete: false, items: [] }, () => {
-            const analyzerItems = (analyzer.getCompletionsAtPosition(source.file, offset) ?? [])
-              .filter(item => item.importance !== 'low')
+            const analyzerCompletions = analyzer.getCompletionsAtPosition(source.file, offset) ?? [];
+            const tagName = enclosingStartTag(document.getText(), documentOffset);
+            const definition = tagName
+              ? analyzerContext.definitionStore.getDefinitionForTagName(tagName)
+              : undefined;
+            const analyzerItems = analyzerCompletions
+              .filter(item => item.importance !== 'low' && !isLitPropertyAttributeCompletion(item, definition))
               .map(item => completionFromAnalyzer(document, item, source.documentRange))
               .filter((item): item is CompletionItem => item !== undefined);
             const seen = new Set(analyzerItems.map(completionKey));
@@ -164,6 +193,7 @@ export function createLitProjectService(
         },
 
         provideHover(document, position, token) {
+          if (document.languageId !== 'html' && document.languageId !== 'css') return;
           const source = sourceFileForDocument(document, token);
           if (!source) return;
           const documentOffset = document.offsetAt(position);
@@ -171,6 +201,18 @@ export function createLitProjectService(
           if (offset === undefined) return;
           return safely(undefined, () => {
             const info = analyzer.getQuickInfoAtPosition(source.file, offset);
+            const tagToken = customTagTokenAt(document.getText(), documentOffset);
+            if (tagToken) {
+              const definition = analyzerContext.definitionStore.getDefinitionForTagName(tagToken.text);
+              const instanceHover = definition && litInstanceHover(
+                document,
+                tagToken,
+                definition,
+                languageService.getProgram(),
+                typescript,
+              );
+              if (instanceHover) return instanceHover;
+            }
             if (info) {
               const infoRange = source.documentRange(info.range.start, info.range.end);
               if (infoRange && isCustomContext(
@@ -328,14 +370,15 @@ function completionFromAnalyzer(
     : undefined;
   if (item.range && !range) return undefined;
   const documentation = item.documentation?.();
+  const insert = withLitBindingValue(item.name, item.insert);
   return {
     label: item.name,
     kind: completionKind(item.kind),
     sortText: item.sortText,
     documentation: documentation ? { kind: 'markdown' as const, value: documentation } : undefined,
-    textEdit: range ? { range, newText: item.insert } : undefined,
-    insertText: range ? undefined : item.insert,
-    insertTextFormat: (/\$\d|\$\{\d/.test(item.insert) ? 2 : 1) as InsertTextFormat,
+    textEdit: range ? { range, newText: insert } : undefined,
+    insertText: range ? undefined : insert,
+    insertTextFormat: (/\$\d|\$\{\d/.test(insert) ? 2 : 1) as InsertTextFormat,
   };
 }
 
@@ -371,8 +414,9 @@ function completionsFromCem(document: TextDocument, offset: number, data: CemPro
   const element = data.elements.get(startTag[1]);
   if (!element) return [];
   const partial = /([@.?]?[\w-]*)$/.exec(before)?.[1] ?? '';
+  const propertyNames = new Set(element.properties.map(property => property.name));
   const features = [
-    ...element.attributes.map(item => [item, item.name] as const),
+    ...element.attributes.filter(item => !propertyNames.has(item.name)).map(item => [item, item.name] as const),
     ...element.attributes.filter(item => item.type === 'boolean').map(item => [item, `?${item.name}`] as const),
     ...element.properties.map(item => [item, `.${item.name}`] as const),
     ...element.events.map(item => [item, `@${item.name}`] as const),
@@ -407,13 +451,32 @@ function cemCompletion(
   document: TextDocument,
   kind: CompletionItemKind,
 ): CompletionItem {
+  const insert = withLitBindingValue(label, label);
   return {
     label,
     kind,
     detail: feature.type,
     documentation: feature.description ? { kind: 'markdown' as const, value: feature.description } : undefined,
-    textEdit: { range: offsetsToRange(document, start, end), newText: label },
+    textEdit: { range: offsetsToRange(document, start, end), newText: insert },
+    insertTextFormat: (/\$\d|\$\{\d/.test(insert) ? 2 : 1) as InsertTextFormat,
   };
+}
+
+function withLitBindingValue(label: string, insert: string): string {
+  return /^[.?@]/.test(label) ? insert + '=\\${$0}' : insert;
+}
+
+function isLitPropertyAttributeCompletion(
+  item: LitCompletion,
+  definition: ComponentDefinition | undefined,
+): boolean {
+  if (/^[.?@]/.test(item.name)) return false;
+  return definition?.declaration?.members.some(member =>
+    member.kind === 'property'
+    && member.attrName === item.name
+    && member.visibility !== 'private'
+    && member.visibility !== 'protected'
+    && (member.meta !== undefined || member.attrName !== undefined)) === true;
 }
 
 function hoverFromCem(document: TextDocument, offset: number, data: CemProjectData) {
@@ -423,6 +486,107 @@ function hoverFromCem(document: TextDocument, offset: number, data: CemProjectDa
   if (element) return cemHover(document, token.start, token.end, element.name, element);
   const feature = findCemFeature(document.getText(), offset, token.start, token.text, data);
   return feature ? cemHover(document, token.start, token.end, token.text, feature) : undefined;
+}
+
+function litInstanceHover(
+  document: TextDocument,
+  tagToken: { text: string; start: number; end: number },
+  definition: ComponentDefinition,
+  program: ts.Program | undefined,
+  typescript: typeof ts,
+) {
+  const declaration = definition.declaration;
+  if (!declaration || !program) return undefined;
+  const checker = program.getTypeChecker();
+  const instanceType = declaration.symbol
+    ? checker.getDeclaredTypeOfSymbol(declaration.symbol as unknown as ts.Symbol)
+    : checker.getTypeAtLocation(declaration.node as unknown as ts.Node);
+  const inheritance = inheritanceChain(instanceType, checker, typescript);
+  if (!inheritance.some(name => name === 'LitElement' || name === 'ReactiveElement')) return undefined;
+
+  const properties = declaration.members
+    .filter((member): member is ComponentMember & { kind: 'property' } =>
+      member.kind === 'property'
+      && member.visibility !== 'private'
+      && member.visibility !== 'protected'
+      && member.node.getSourceFile() === declaration.sourceFile
+      && (member.meta !== undefined || member.attrName !== undefined))
+    .slice(0, 8);
+  const events = declaration.events
+    .filter(event => event.visibility !== 'private' && event.visibility !== 'protected')
+    .slice(0, 8);
+  const lines = [`const ${tagNameToIdentifier(tagToken.text)}: {`];
+  for (const member of properties) {
+    lines.push(`  ${typescriptPropertyName(member.propName)}: ${typeForMember(member, checker, typescript)};`);
+  }
+  for (const event of events) {
+    lines.push(`  ${JSON.stringify(`@${event.name}`)}: ${typeForEvent(event, checker, typescript)};`);
+  }
+  lines.push('};');
+  return {
+    range: offsetsToRange(document, tagToken.start, tagToken.end),
+    contents: { language: 'typescript', value: lines.join('\n') },
+  };
+}
+
+function inheritanceChain(type: ts.Type, checker: ts.TypeChecker, typescript: typeof ts): string[] {
+  const names: string[] = [];
+  let current: ts.Type | undefined = type;
+  for (let depth = 0; current && depth < 6; depth++) {
+    const name = current.getSymbol()?.getName() ?? checker.typeToString(current);
+    if (name && name !== '{}') names.push(name);
+    if ((current.flags & typescript.TypeFlags.Object) === 0) break;
+    let bases: readonly ts.BaseType[] = [];
+    try {
+      bases = checker.getBaseTypes(current as ts.InterfaceType) ?? [];
+    }
+    catch {
+      break;
+    }
+    current = bases[0];
+  }
+  return names;
+}
+
+function typeForMember(member: ComponentMember, checker: ts.TypeChecker, typescript: typeof ts): string {
+  try {
+    const node = member.node as unknown as ts.Node;
+    return checker.typeToString(
+      checker.getTypeAtLocation(node),
+      node,
+      typescript.TypeFormatFlags.NoTruncation,
+    );
+  }
+  catch {
+    return member.typeHint ?? 'unknown';
+  }
+}
+
+function typeForEvent(event: ComponentEvent, checker: ts.TypeChecker, typescript: typeof ts): string {
+  if (event.typeHint) return event.typeHint;
+  try {
+    const eventType = event.type?.() as unknown as ts.Type | undefined;
+    if (eventType && typeof eventType.flags === 'number') {
+      return checker.typeToString(
+        eventType,
+        event.node as unknown as ts.Node,
+        typescript.TypeFormatFlags.NoTruncation,
+      );
+    }
+  }
+  catch {
+    // Fall through to the generic event type.
+  }
+  return 'Event';
+}
+
+function tagNameToIdentifier(tagName: string): string {
+  const identifier = tagName.replace(/-([a-z0-9])/g, (_, character: string) => character.toUpperCase());
+  return /^[A-Za-z_$]/.test(identifier) ? identifier : `element${identifier}`;
+}
+
+function typescriptPropertyName(name: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
 }
 
 function cemHover(document: TextDocument, start: number, end: number, label: string, feature: CemFeature) {
@@ -523,12 +687,76 @@ function offsetsToRange(document: TextDocument, start: number, end: number) {
   return { start: document.positionAt(start), end: document.positionAt(end) };
 }
 
+interface LitBinding {
+  tagName: string;
+  modifier: '.' | '?' | '@';
+  name: string;
+}
+
+function litBindingAtOffset(text: string, offset: number): LitBinding | undefined {
+  const startTag = /<([\w.-]+)\b([^<>]*)$/.exec(text.slice(0, offset));
+  if (!startTag) return undefined;
+  const attributes = startTag[2];
+  const match = /(?:^|\s)([.?@])([\w-]+)\s*=$/.exec(attributes);
+  if (!match) return undefined;
+  const modifier = match[1] as LitBinding['modifier'];
+  const modifierOffset = match.index + match[0].lastIndexOf(modifier);
+  let quote: '"' | "'" | undefined;
+  for (let index = 0; index < modifierOffset; index++) {
+    const character = attributes[index];
+    if (quote) {
+      if (character === quote) quote = undefined;
+    }
+    else if (character === '"' || character === "'") {
+      quote = character;
+    }
+  }
+  if (quote) return undefined;
+  return { tagName: startTag[1], modifier, name: match[2] };
+}
+
+function isKnownLitBinding(
+  binding: LitBinding,
+  definition: ComponentDefinition | undefined,
+  cemElement: CemElement | undefined,
+): boolean {
+  const declaration = definition?.declaration;
+  if (binding.modifier === '@') {
+    return declaration?.events.some(event =>
+      event.name === binding.name
+      && event.visibility !== 'private'
+      && event.visibility !== 'protected') === true
+      || cemElement?.events.some(event => event.name === binding.name) === true;
+  }
+  if (binding.modifier === '.') {
+    return declaration?.members.some(member =>
+      member.kind === 'property'
+      && member.propName === binding.name
+      && member.visibility !== 'private'
+      && member.visibility !== 'protected') === true
+      || cemElement?.properties.some(property => property.name === binding.name) === true;
+  }
+  return declaration?.members.some(member =>
+    member.kind === 'property'
+    && member.attrName === binding.name
+    && member.visibility !== 'private'
+    && member.visibility !== 'protected') === true
+    || cemElement?.attributes.some(attribute => attribute.name === binding.name) === true;
+}
+
 function tokenAt(text: string, offset: number): { text: string; start: number; end: number } | undefined {
   let start = offset;
   let end = offset;
   while (start > 0 && /[@.?\w-]/.test(text[start - 1])) start--;
   while (end < text.length && /[@.?\w-]/.test(text[end])) end++;
   return end > start ? { text: text.slice(start, end), start, end } : undefined;
+}
+
+function customTagTokenAt(text: string, offset: number): { text: string; start: number; end: number } | undefined {
+  const token = tokenAt(text, offset);
+  if (!token || !token.text.includes('-')) return undefined;
+  const prefix = text.slice(Math.max(0, token.start - 2), token.start);
+  return prefix.endsWith('<') || prefix.endsWith('</') ? token : undefined;
 }
 
 function enclosingStartTag(text: string, offset: number): string | undefined {

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "inline.lit-volar.substitution",
+  "injectionSelector": "L:meta.embedded.block.lit-html, L:meta.embedded.block.lit-css, L:meta.embedded.block.lit-svg",
+  "patterns": [
+    {
+      "include": "source.ts#template-substitution-element"
+    }
+  ]
+}

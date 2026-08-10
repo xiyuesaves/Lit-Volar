@@ -1,0 +1,8 @@
+{
+  "name": "lit-volar-sample",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "lit": "^3.3.1"
+  }
+}

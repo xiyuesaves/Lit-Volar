@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "inline.lit-volar.svg",
+  "injectionSelector": "L:source.js -comment -(string -meta.embedded), L:source.jsx -comment -(string -meta.embedded), L:source.js.jsx -comment -(string -meta.embedded), L:source.ts -comment -(string -meta.embedded), L:source.tsx -comment -(string -meta.embedded)",
+  "patterns": [
+    {
+      "name": "meta.template.expression.lit-svg",
+      "begin": "\\b(?:[A-Za-z_$][\\w$]*\\s*\\.\\s*)*svg\\s*(`)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.string.template.begin.ts"
+        }
+      },
+      "end": "(`)",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.string.template.end.ts"
+        }
+      },
+      "contentName": "meta.embedded.block.lit-svg",
+      "patterns": [
+        {
+          "include": "source.ts#template-substitution-element"
+        },
+        {
+          "include": "text.xml"
+        }
+      ]
+    }
+  ]
+}

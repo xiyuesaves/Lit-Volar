@@ -1,0 +1,159 @@
+{
+  "name": "lit-volar",
+  "displayName": "Lit Volar",
+  "description": "HTML, CSS, and SVG language tooling for Lit tagged templates powered by Volar.",
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.15.1",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "lit",
+    "volar",
+    "html",
+    "css",
+    "svg"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact"
+  ],
+  "main": "./dist/client.js",
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "watch": "node ./scripts/build.mjs --watch",
+    "check": "tsc --noEmit",
+    "test": "tsx --test src/test/*.test.ts",
+    "smoke:lsp": "node ./scripts/smoke-lsp.mjs",
+    "verify": "pnpm check && pnpm test && pnpm build && pnpm smoke:lsp",
+    "package": "pnpm verify && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Lit Volar",
+      "properties": {
+        "litVolar.htmlTemplateTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "html",
+            "raw"
+          ],
+          "description": "Tagged template names treated as HTML. Reload the window after changing this setting."
+        },
+        "litVolar.cssTemplateTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "css"
+          ],
+          "description": "Tagged template names treated as CSS. Reload the window after changing this setting."
+        },
+        "litVolar.svgTemplateTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "svg"
+          ],
+          "description": "Tagged template names treated as SVG. Reload the window after changing this setting."
+        }
+      }
+    },
+    "grammars": [
+      {
+        "scopeName": "inline.lit-volar.html",
+        "path": "./syntaxes/lit-html.injection.json",
+        "injectTo": [
+          "source.js",
+          "source.js.jsx",
+          "source.jsx",
+          "source.ts",
+          "source.tsx"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.lit-html": "html"
+        }
+      },
+      {
+        "scopeName": "inline.lit-volar.css",
+        "path": "./syntaxes/lit-css.injection.json",
+        "injectTo": [
+          "source.js",
+          "source.js.jsx",
+          "source.jsx",
+          "source.ts",
+          "source.tsx"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.lit-css": "css",
+          "source.css.scss": "css"
+        }
+      },
+      {
+        "scopeName": "inline.lit-volar.svg",
+        "path": "./syntaxes/lit-svg.injection.json",
+        "injectTo": [
+          "source.js",
+          "source.js.jsx",
+          "source.jsx",
+          "source.ts",
+          "source.tsx"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.lit-svg": "xml"
+        }
+      },
+      {
+        "scopeName": "inline.lit-volar.substitution",
+        "path": "./syntaxes/lit-substitution.injection.json",
+        "injectTo": [
+          "source.js",
+          "source.js.jsx",
+          "source.jsx",
+          "source.ts",
+          "source.tsx",
+          "text.html.basic",
+          "text.xml",
+          "source.css",
+          "source.css.scss"
+        ],
+        "embeddedLanguages": {
+          "meta.template.expression.ts": "typescript",
+          "meta.template.expression.js": "javascript"
+        }
+      }
+    ]
+  },
+  "dependencies": {
+    "@volar/language-core": "2.4.28",
+    "@volar/language-server": "2.4.28",
+    "@volar/language-service": "2.4.28",
+    "@volar/vscode": "2.4.28",
+    "typescript": "^5.9.2",
+    "volar-service-css": "0.0.71",
+    "volar-service-emmet": "0.0.71",
+    "volar-service-html": "0.0.71",
+    "vscode-html-languageservice": "5.6.2",
+    "vscode-uri": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0"
+  }
+}

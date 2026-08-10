@@ -1,0 +1,10 @@
+.vscode/**
+.vscode-test/**
+samples/**
+scripts/**
+src/**
+node_modules/**
+tsconfig.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+*.vsix

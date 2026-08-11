@@ -75,7 +75,7 @@ Lit Volar 是一个 VS Code 扩展，为 Lit tagged template 提供 HTML、CSS�
 | `litVolar.dontShowSuggestions` | boolean | `false` | 隐藏 Lit 项目建议。 |
 | `litVolar.logging` | `off \| error \| warn \| debug \| verbose` | `off` | 设置 language server output channel 的日志级别。 |
 
-默认 profile 包含 `no-unclosed-tag`、`no-unintended-mixed-binding`、绑定类型检查、directive 和名称校验以及 `no-legacy-attribute`。`no-missing-import`、`no-unknown-tag-name`、`no-unknown-property` 等规则需要 `strict` 或显式配置启用。
+默认 profile 以 warning 级别启用 `no-missing-import`、`no-unknown-tag-name`、`no-unknown-property` 和 `no-legacy-attribute`，并包含 `no-unclosed-tag`、`no-unintended-mixed-binding`、绑定类型检查、directive 检查和名称校验。其他规则可以通过 `strict` 或显式配置启用。
 
 示例：
 

@@ -33,7 +33,10 @@ interface UriConverter {
 }
 
 const defaultDiagnosticProfile: LitAnalyzerRules = {
+  'no-unknown-tag-name': 'warning',
+  'no-missing-import': 'warning',
   'no-unclosed-tag': 'warning',
+  'no-unknown-property': 'warning',
   'no-unintended-mixed-binding': 'warning',
   'no-invalid-boolean-binding': 'error',
   'no-expressionless-property-binding': 'error',

@@ -75,7 +75,7 @@ All settings use the `litVolar.*` namespace. The extension does not read or cont
 | `litVolar.dontShowSuggestions` | boolean | `false` | Suppress Lit project suggestions. |
 | `litVolar.logging` | `off \| error \| warn \| debug \| verbose` | `off` | Set the language-server output-channel logging level. |
 
-The default profile includes `no-unclosed-tag`, `no-unintended-mixed-binding`, binding type checks, directive and name validation, and `no-legacy-attribute`. Rules such as `no-missing-import`, `no-unknown-tag-name`, and `no-unknown-property` are enabled by `strict` or an explicit override.
+The default profile enables `no-missing-import`, `no-unknown-tag-name`, `no-unknown-property`, and `no-legacy-attribute` at warning severity. It also includes `no-unclosed-tag`, `no-unintended-mixed-binding`, binding type checks, directive checks, and name validation. Other rules can be enabled by `strict` or an explicit override.
 
 Example:
 

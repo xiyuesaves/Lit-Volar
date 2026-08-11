@@ -190,9 +190,6 @@ try {
       },
       litVolar: {
         globalEvents: ['refresh-event'],
-        rules: {
-          'no-missing-import': 'warning',
-        },
       },
     },
   });
@@ -445,6 +442,20 @@ try {
   );
   assert.ok(bindingAnalysis.diagnostics.some(item => item.code === 'no-incompatible-type-binding'),
     'Default project binding type diagnostic was not reported');
+
+  const unknownTagAnalysis = await diagnosticsAndActions(
+    "import { html } from 'lit'; const view = html`<unknown-widget|></unknown-widget>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(unknownTagAnalysis.diagnostics.some(item => item.code === 'no-unknown-tag-name'),
+    'Default profile did not report an unknown custom element');
+
+  const unknownPropertyAnalysis = await diagnosticsAndActions(
+    "import { html } from 'lit'; import './project-card'; const view = html`<project-card .missing=${'value'}|></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  assert.ok(unknownPropertyAnalysis.diagnostics.some(item => item.code === 'no-unknown-property'),
+    'Default profile did not report an unknown property binding');
 
   const syntaxAnalysis = await diagnosticsAndActions(
     "import { html } from 'lit'; const view = html`<div><div></div>|`;",

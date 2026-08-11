@@ -33,7 +33,10 @@ describe('Lit Volar configuration', () => {
     assert.equal(rules['no-noncallable-event-binding'], 'error');
     assert.equal(rules['no-invalid-boolean-binding'], 'error');
     assert.equal(rules['no-boolean-in-attribute-binding'], 'warning');
-    assert.equal(rules['no-unknown-tag-name'], 'off');
+    assert.equal(rules['no-missing-import'], 'warning');
+    assert.equal(rules['no-unknown-tag-name'], 'warning');
+    assert.equal(rules['no-unknown-property'], 'warning');
+    assert.equal(rules['no-legacy-attribute'], 'warning');
     assert.equal(rules['no-invalid-css'], 'off');
   });
 
@@ -47,7 +50,7 @@ describe('Lit Volar configuration', () => {
     }));
     assert.equal(rules['no-unclosed-tag'], 'error');
     assert.equal(rules['no-boolean-in-attribute-binding'], 'error');
-    assert.equal(rules['no-unknown-tag-name'], 'warn');
+    assert.equal(rules['no-unknown-tag-name'], 'warning');
     assert.equal(rules['no-legacy-attribute'], 'warning');
     assert.equal(rules['no-incompatible-type-binding'], 'off');
     assert.equal(rules['no-unknown-property'], 'error');

@@ -9,3 +9,5 @@ tsconfig.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
 *.vsix
+dist/*.map
+dist/extension-tests/**

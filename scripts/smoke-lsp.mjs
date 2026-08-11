@@ -185,7 +185,11 @@ try {
       workspace: {},
     },
     initializationOptions: {
+      typescript: {
+        tsdk: path.join(process.cwd(), 'node_modules', 'typescript', 'lib'),
+      },
       litVolar: {
+        globalEvents: ['refresh-event'],
         rules: {
           'no-missing-import': 'warning',
         },
@@ -197,6 +201,8 @@ try {
     'Server did not advertise @ as a completion trigger');
   assert.ok(initializeResult.capabilities.completionProvider.triggerCharacters?.includes('?'),
     'Server did not advertise ? as a completion trigger');
+  assert.equal(initializeResult.capabilities.documentHighlightProvider, undefined,
+    'Server advertised document highlights for entire TypeScript documents');
   notify('initialized', {});
 
   const htmlItems = await completionAt('const view = html`<bu|`;', 'html.ts');
@@ -214,6 +220,12 @@ try {
 
   const clickAutoInsert = await autoInsertAt('const view = html`<button @click=|></button>`;', 'binding.ts');
   assert.equal(clickAutoInsert, '\\${$0}', 'Built-in Lit event binding did not replace quotes with a Lit expression');
+
+  const configuredEventItems = await completionAt(
+    'const view = html`<button @ref|></button>`;',
+    'binding.ts',
+  );
+  assert.ok(labels(configuredEventItems).includes('@refresh-event'), 'Configured global event completion was missing');
 
   const propertyBindingItems = await completionAt('const view = html`<input .va|>`;', 'binding.ts');
   const valueCompletion = propertyBindingItems.find(item => item.label === '.value');
@@ -267,6 +279,15 @@ try {
   const projectPropertyItem = projectPropertyItems.find(item => item.label === '.title');
   const projectPropertyInsert = projectPropertyItem?.textEdit?.newText ?? projectPropertyItem?.insertText ?? '';
   assert.match(projectPropertyInsert, /=\\\$\{\$0\}$/, 'Project property completion did not insert a Lit expression');
+
+  const projectBooleanItems = await completionAt(
+    "import { html } from 'lit'; const view = html`<project-card ?ac|></project-card>`;",
+    'samples/project-consumer.ts',
+  );
+  const projectBooleanItem = projectBooleanItems.find(item => item.label === '?active');
+  assert.ok(projectBooleanItem, 'Project boolean attribute completion did not include ?active');
+  assert.match(projectBooleanItem.textEdit?.newText ?? projectBooleanItem.insertText ?? '', /=\\\$\{\$0\}$/,
+    'Project boolean attribute completion did not insert a Lit expression');
 
   const projectTestPropertyItems = await completionAt(
     "import { html } from 'lit'; const view = html`<project-card .te|></project-card>`;",
@@ -370,6 +391,18 @@ try {
   assert.match(litInstanceText, /"@activate": CustomEvent<\{ active: boolean; \}>;/, 'Lit instance Hover did not show event payload types');
   assert.doesNotMatch(litInstanceText, /\/\/ attribute:/, 'Lit instance Hover included generated attribute comments');
   assert.doesNotMatch(litInstanceText, /Inheritance|Declared in|\| Binding \|/, 'Lit instance Hover included documentation UI instead of Quick Info');
+
+  const inheritedHover = await requestAt(
+    "import { html } from 'lit'; import './api-card'; const view = html`<api-c|ard></api-card>`;",
+    'samples/project-consumer.ts',
+    'textDocument/hover',
+  );
+  const inheritedHoverText = inheritedHover?.contents?.value ?? '';
+  assert.match(inheritedHoverText, /^class ApiCardElement \{/m, 'Inherited API Hover did not use the concrete class');
+  assert.match(inheritedHoverText, /value9: number;/, 'Lit instance Hover still truncated reactive properties');
+  assert.match(inheritedHoverText, /inheritedLabel: string;/, 'Lit instance Hover omitted project-base reactive properties');
+  assert.match(inheritedHoverText, /"@commit": CustomEvent<\{ id: number; \}>;/, 'Lit instance Hover omitted public events');
+  assert.doesNotMatch(inheritedHoverText, /renderRoot|updateComplete|shadowRoot/, 'Lit instance Hover exposed framework members');
 
   const definition = await requestAt(
     "import { html } from 'lit'; import './project-card'; const view = html`<project-c|ard></project-card>`;",

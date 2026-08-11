@@ -2,7 +2,7 @@
   "name": "lit-volar",
   "displayName": "Lit Volar",
   "description": "HTML, CSS, and SVG language tooling for Lit tagged templates powered by Volar.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "packageManager": "pnpm@10.15.1",
   "publisher": "local",
   "license": "MIT",
@@ -31,8 +31,9 @@
     "watch": "node ./scripts/build.mjs --watch",
     "check": "tsc --noEmit",
     "test": "tsx --test src/test/*.test.ts",
+    "test:extension": "node ./scripts/run-extension-tests.mjs",
     "smoke:lsp": "node ./scripts/smoke-lsp.mjs",
-    "verify": "pnpm check && pnpm test && pnpm build && pnpm smoke:lsp",
+    "verify": "pnpm check && pnpm test && pnpm build && pnpm smoke:lsp && pnpm test:extension",
     "package": "pnpm verify && vsce package --no-dependencies --allow-missing-repository"
   },
   "contributes": {
@@ -40,106 +41,185 @@
       "title": "Lit Volar",
       "properties": {
         "litVolar.disable": {
+          "scope": "resource",
           "type": "boolean",
           "default": false,
           "description": "Disable all Lit-specific project analysis while keeping generic embedded HTML, CSS, and SVG editing available."
         },
         "litVolar.strict": {
+          "scope": "resource",
           "type": "boolean",
           "default": false,
           "description": "Layer the strict Lit analyzer rule profile over the default high-confidence checks. Explicit rule settings take precedence."
         },
         "litVolar.rules": {
+          "scope": "resource",
           "type": "object",
           "default": {},
           "additionalProperties": false,
           "properties": {
-            "no-unknown-tag-name": { "$ref": "#/definitions/ruleSeverity" },
-            "no-missing-import": { "$ref": "#/definitions/ruleSeverity" },
-            "no-unclosed-tag": { "$ref": "#/definitions/ruleSeverity" },
-            "no-unknown-attribute": { "$ref": "#/definitions/ruleSeverity" },
-            "no-unknown-property": { "$ref": "#/definitions/ruleSeverity" },
-            "no-unknown-event": { "$ref": "#/definitions/ruleSeverity" },
-            "no-unknown-slot": { "$ref": "#/definitions/ruleSeverity" },
-            "no-unintended-mixed-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-invalid-boolean-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-expressionless-property-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-noncallable-event-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-boolean-in-attribute-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-complex-attribute-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-nullable-attribute-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-incompatible-type-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-invalid-directive-binding": { "$ref": "#/definitions/ruleSeverity" },
-            "no-incompatible-property-type": { "$ref": "#/definitions/ruleSeverity" },
-            "no-invalid-attribute-name": { "$ref": "#/definitions/ruleSeverity" },
-            "no-invalid-tag-name": { "$ref": "#/definitions/ruleSeverity" },
-            "no-invalid-css": { "$ref": "#/definitions/ruleSeverity" },
-            "no-property-visibility-mismatch": { "$ref": "#/definitions/ruleSeverity" },
-            "no-legacy-attribute": { "$ref": "#/definitions/ruleSeverity" },
-            "no-missing-element-type-definition": { "$ref": "#/definitions/ruleSeverity" }
+            "no-unknown-tag-name": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-missing-import": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-unclosed-tag": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-unknown-attribute": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-unknown-property": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-unknown-event": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-unknown-slot": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-unintended-mixed-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-invalid-boolean-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-expressionless-property-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-noncallable-event-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-boolean-in-attribute-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-complex-attribute-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-nullable-attribute-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-incompatible-type-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-invalid-directive-binding": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-incompatible-property-type": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-invalid-attribute-name": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-invalid-tag-name": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-invalid-css": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-property-visibility-mismatch": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-legacy-attribute": {
+              "$ref": "#/definitions/ruleSeverity"
+            },
+            "no-missing-element-type-definition": {
+              "$ref": "#/definitions/ruleSeverity"
+            }
           },
           "description": "Per-rule Lit diagnostic severity."
         },
         "litVolar.securitySystem": {
+          "scope": "resource",
           "type": "string",
-          "enum": ["off", "ClosureSafeTypes"],
+          "enum": [
+            "off",
+            "ClosureSafeTypes"
+          ],
           "default": "off",
           "description": "Optional security type system used for binding checks."
         },
         "litVolar.globalTags": {
+          "scope": "resource",
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Additional tag names treated as globally available."
         },
         "litVolar.globalAttributes": {
+          "scope": "resource",
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Additional attributes accepted on every element."
         },
         "litVolar.globalEvents": {
+          "scope": "resource",
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Additional events accepted on every element."
         },
         "litVolar.customHtmlData": {
+          "scope": "resource",
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "HTML custom data JSON files or globs, resolved relative to the project root."
         },
         "litVolar.customElementsManifests": {
+          "scope": "resource",
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Custom Elements Manifest files or globs, resolved relative to the project root."
         },
         "litVolar.maxProjectImportDepth": {
+          "scope": "resource",
           "type": "integer",
           "default": -1,
           "minimum": -1,
           "description": "Maximum dependency traversal depth inside the project. -1 means unlimited."
         },
         "litVolar.maxNodeModuleImportDepth": {
+          "scope": "resource",
           "type": "integer",
           "default": 1,
           "minimum": -1,
           "description": "Maximum dependency traversal depth inside node_modules. -1 means unlimited."
         },
         "litVolar.dontShowSuggestions": {
+          "scope": "resource",
           "type": "boolean",
           "default": false,
           "description": "Disable Lit project-specific suggestions."
         },
         "litVolar.logging": {
+          "scope": "resource",
           "type": "string",
-          "enum": ["off", "error", "warn", "debug", "verbose"],
+          "enum": [
+            "off",
+            "error",
+            "warn",
+            "debug",
+            "verbose"
+          ],
           "default": "off",
           "description": "Lit analyzer logging level in the language server output channel."
         },
         "litVolar.htmlTemplateTags": {
+          "scope": "resource",
           "type": "array",
           "items": {
             "type": "string"
@@ -151,6 +231,7 @@
           "description": "Tagged template names treated as HTML."
         },
         "litVolar.cssTemplateTags": {
+          "scope": "resource",
           "type": "array",
           "items": {
             "type": "string"
@@ -161,6 +242,7 @@
           "description": "Tagged template names treated as CSS."
         },
         "litVolar.svgTemplateTags": {
+          "scope": "resource",
           "type": "array",
           "items": {
             "type": "string"
@@ -174,7 +256,11 @@
       "definitions": {
         "ruleSeverity": {
           "type": "string",
-          "enum": ["off", "warning", "error"]
+          "enum": [
+            "off",
+            "warning",
+            "error"
+          ]
         }
       }
     },
@@ -263,6 +349,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.25.0",
     "tsx": "^4.20.0"

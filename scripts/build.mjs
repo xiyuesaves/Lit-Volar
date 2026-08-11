@@ -39,6 +39,12 @@ const builds = [
     outfile: 'dist/server.js',
     format: 'cjs',
   },
+  {
+    ...common,
+    entryPoints: ['src/test/extension/index.ts'],
+    outfile: 'dist/extension-tests/index.js',
+    format: 'cjs',
+  },
 ];
 
 if (watch) {

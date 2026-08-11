@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { defaultConfig, normalizeConfig } from '../config';
+import { createAnalyzerRules } from '../litService';
 
 describe('Lit Volar configuration', () => {
   it('uses the low-false-positive profile inputs by default', () => {
@@ -24,5 +25,31 @@ describe('Lit Volar configuration', () => {
       'no-unknown-tag-name': 'warning',
       'no-invalid-css': 'error',
     });
+  });
+
+  it('enables high-confidence binding diagnostics without the full strict profile', () => {
+    const rules = createAnalyzerRules(normalizeConfig());
+    assert.equal(rules['no-incompatible-type-binding'], 'error');
+    assert.equal(rules['no-noncallable-event-binding'], 'error');
+    assert.equal(rules['no-invalid-boolean-binding'], 'error');
+    assert.equal(rules['no-boolean-in-attribute-binding'], 'warning');
+    assert.equal(rules['no-unknown-tag-name'], 'off');
+    assert.equal(rules['no-invalid-css'], 'off');
+  });
+
+  it('layers strict rules over defaults before applying explicit overrides', () => {
+    const rules = createAnalyzerRules(normalizeConfig({
+      strict: true,
+      rules: {
+        'no-incompatible-type-binding': 'off',
+        'no-unknown-property': 'error',
+      },
+    }));
+    assert.equal(rules['no-unclosed-tag'], 'error');
+    assert.equal(rules['no-boolean-in-attribute-binding'], 'error');
+    assert.equal(rules['no-unknown-tag-name'], 'warn');
+    assert.equal(rules['no-legacy-attribute'], 'warning');
+    assert.equal(rules['no-incompatible-type-binding'], 'off');
+    assert.equal(rules['no-unknown-property'], 'error');
   });
 });

@@ -47,7 +47,7 @@
         "litVolar.strict": {
           "type": "boolean",
           "default": false,
-          "description": "Enable the strict Lit analyzer rule profile. Explicit rule settings take precedence."
+          "description": "Layer the strict Lit analyzer rule profile over the default high-confidence checks. Explicit rule settings take precedence."
         },
         "litVolar.rules": {
           "type": "object",

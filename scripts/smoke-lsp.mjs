@@ -91,7 +91,7 @@ function positionAt(text, offset) {
   return { line: lines.length - 1, character: lines.at(-1).length };
 }
 
-async function completionAt(sourceWithMarker, fileName) {
+async function completionAt(sourceWithMarker, fileName, context = { triggerKind: 1 }) {
   const markerOffset = sourceWithMarker.indexOf('|');
   assert.notEqual(markerOffset, -1, 'Completion fixture must include a marker');
   const text = sourceWithMarker.slice(0, markerOffset) + sourceWithMarker.slice(markerOffset + 1);
@@ -103,7 +103,7 @@ async function completionAt(sourceWithMarker, fileName) {
   const completion = await request('textDocument/completion', {
     textDocument: { uri },
     position: positionAt(text, markerOffset),
-    context: { triggerKind: 1 },
+    context,
   });
   notify('textDocument/didClose', { textDocument: { uri } });
   return Array.isArray(completion) ? completion : completion?.items ?? [];
@@ -188,19 +188,46 @@ try {
       litVolar: {
         rules: {
           'no-missing-import': 'warning',
-          'no-incompatible-type-binding': 'error',
         },
       },
     },
   });
   assert.ok(initializeResult.capabilities.completionProvider, 'Server did not advertise completion');
+  assert.ok(initializeResult.capabilities.completionProvider.triggerCharacters?.includes('@'),
+    'Server did not advertise @ as a completion trigger');
+  assert.ok(initializeResult.capabilities.completionProvider.triggerCharacters?.includes('?'),
+    'Server did not advertise ? as a completion trigger');
   notify('initialized', {});
 
   const htmlItems = await completionAt('const view = html`<bu|`;', 'html.ts');
   assert.ok(labels(htmlItems).includes('button'), 'HTML completion did not include button');
 
-  const litBindingItems = await completionAt('const view = html`<button @|></button>`;', 'binding.ts');
+  const litBindingItems = await completionAt(
+    'const view = html`<button @|></button>`;',
+    'binding.ts',
+    { triggerKind: 2, triggerCharacter: '@' },
+  );
   assert.ok(labels(litBindingItems).includes('@click'), 'Lit completion did not include @click');
+  const clickCompletion = litBindingItems.find(item => item.label === '@click');
+  assert.equal(clickCompletion?.textEdit?.newText ?? clickCompletion?.insertText, '@click=\\${$0}',
+    'Built-in Lit event completion used an HTML quoted value');
+
+  const clickAutoInsert = await autoInsertAt('const view = html`<button @click=|></button>`;', 'binding.ts');
+  assert.equal(clickAutoInsert, '\\${$0}', 'Built-in Lit event binding did not replace quotes with a Lit expression');
+
+  const propertyBindingItems = await completionAt('const view = html`<input .va|>`;', 'binding.ts');
+  const valueCompletion = propertyBindingItems.find(item => item.label === '.value');
+  assert.equal(valueCompletion?.textEdit?.newText ?? valueCompletion?.insertText, '.value=\\${$0}',
+    'Built-in Lit property completion used an HTML quoted value');
+
+  const booleanBindingItems = await completionAt(
+    'const view = html`<button ?|></button>`;',
+    'binding.ts',
+    { triggerKind: 2, triggerCharacter: '?' },
+  );
+  const disabledCompletion = booleanBindingItems.find(item => item.label === '?disabled');
+  assert.equal(disabledCompletion?.textEdit?.newText ?? disabledCompletion?.insertText, '?disabled=\\${$0}',
+    'Built-in Lit boolean completion used an HTML quoted value');
 
   const cssItems = await completionAt('const styles = css`:host { col| }`;', 'css.ts');
   assert.ok(labels(cssItems).includes('color'), 'CSS completion did not include color');
@@ -335,8 +362,9 @@ try {
   const litInstanceText = litInstanceHover?.contents?.value ?? '';
   assert.equal(litInstanceHover?.contents?.kind, 'markdown', 'Lit instance Hover was not normalized as highlighted Markdown');
   assert.match(litInstanceText, /^```typescript/m, 'Lit instance Hover did not request TypeScript code highlighting');
-  assert.equal((litInstanceText.match(/const projectCard:/g) ?? []).length, 1, 'Lit instance Hover returned duplicate Quick Info');
-  assert.match(litInstanceText, /^const projectCard: \{/m, 'Lit instance Hover did not use TypeScript Quick Info shape');
+  assert.equal((litInstanceText.match(/class ProjectCardElement \{/g) ?? []).length, 1, 'Lit instance Hover returned duplicate Quick Info');
+  assert.match(litInstanceText, /^class ProjectCardElement \{/m, 'Lit instance Hover did not use the declared class name');
+  assert.doesNotMatch(litInstanceText, /^const\s/m, 'Lit instance Hover used a synthetic const declaration');
   assert.match(litInstanceText, /title: string;/, 'Lit instance Hover did not show public reactive properties');
   assert.match(litInstanceText, /active: boolean;/, 'Lit instance Hover did not show boolean inputs');
   assert.match(litInstanceText, /"@activate": CustomEvent<\{ active: boolean; \}>;/, 'Lit instance Hover did not show event payload types');
@@ -373,7 +401,7 @@ try {
     'samples/project-consumer.ts',
   );
   assert.ok(bindingAnalysis.diagnostics.some(item => item.code === 'no-incompatible-type-binding'),
-    'Project binding type diagnostic was not reported');
+    'Default project binding type diagnostic was not reported');
 
   const syntaxAnalysis = await diagnosticsAndActions(
     "import { html } from 'lit'; const view = html`<div><div></div>|`;",

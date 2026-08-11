@@ -21,7 +21,7 @@ import {
 } from 'lit-analyzer';
 import type ts from 'typescript';
 import { URI } from 'vscode-uri';
-import type { ComponentDefinition, ComponentEvent, ComponentMember } from 'web-component-analyzer';
+import type { ComponentDeclaration, ComponentDefinition, ComponentEvent, ComponentMember } from 'web-component-analyzer';
 import { loadCemProjectData, resolveConfigPaths, type CemElement, type CemFeature, type CemProjectData } from './cemData';
 import type { LitVolarConfig } from './config';
 import { typescriptInjectionKeys } from './typescriptBridge';
@@ -31,10 +31,14 @@ interface UriConverter {
   asFileName(uri: URI): string;
 }
 
-const syntaxDefaults: LitAnalyzerRules = {
+const defaultDiagnosticProfile: LitAnalyzerRules = {
   'no-unclosed-tag': 'warning',
   'no-unintended-mixed-binding': 'warning',
+  'no-invalid-boolean-binding': 'error',
   'no-expressionless-property-binding': 'error',
+  'no-noncallable-event-binding': 'error',
+  'no-boolean-in-attribute-binding': 'warning',
+  'no-incompatible-type-binding': 'error',
   'no-invalid-directive-binding': 'error',
   'no-invalid-attribute-name': 'error',
   'no-invalid-tag-name': 'error',
@@ -330,17 +334,10 @@ export function createLitProjectService(
 }
 
 function createAnalyzerConfig(config: LitVolarConfig, projectRoot: string, cemData: CemProjectData): LitAnalyzerConfig {
-  const rules: LitAnalyzerRules = config.strict
-    ? {}
-    : Object.fromEntries(ALL_RULE_IDS.map(id => [id, 'off'])) as LitAnalyzerRules;
-  if (!config.strict) Object.assign(rules, syntaxDefaults);
-  Object.assign(rules, config.rules);
-  // Modern volar-service-css owns CSS parsing and severity mapping.
-  rules['no-invalid-css'] = 'off';
   return makeConfig({
     disable: config.disable,
     strict: config.strict,
-    rules,
+    rules: createAnalyzerRules(config),
     securitySystem: config.securitySystem,
     globalTags: config.globalTags,
     globalAttributes: config.globalAttributes,
@@ -358,6 +355,32 @@ function createAnalyzerConfig(config: LitVolarConfig, projectRoot: string, cemDa
     htmlTemplateTags: config.htmlTemplateTags,
     cssTemplateTags: config.cssTemplateTags,
   });
+}
+
+export function createAnalyzerRules(
+  config: Pick<LitVolarConfig, 'strict' | 'rules'>,
+): LitAnalyzerRules {
+  const rules = Object.fromEntries(ALL_RULE_IDS.map(id => [id, 'off'])) as LitAnalyzerRules;
+  Object.assign(rules, defaultDiagnosticProfile);
+  if (config.strict) {
+    const strictRules = makeConfig({ strict: true }).rules;
+    for (const id of ALL_RULE_IDS) {
+      if (ruleSeverityRank(strictRules[id]) > ruleSeverityRank(rules[id])) {
+        rules[id] = strictRules[id];
+      }
+    }
+  }
+  Object.assign(rules, config.rules);
+  // Modern volar-service-css owns CSS parsing and severity mapping.
+  rules['no-invalid-css'] = 'off';
+  return rules;
+}
+
+function ruleSeverityRank(severity: LitAnalyzerRules[keyof LitAnalyzerRules]): number {
+  const value = Array.isArray(severity) ? severity[0] : severity;
+  if (value === 'error' || value === 2) return 2;
+  if (value === 'warn' || value === 'warning' || value === 'on' || value === 1 || value === true) return 1;
+  return 0;
 }
 
 function completionFromAnalyzer(
@@ -515,14 +538,14 @@ function litInstanceHover(
   const events = declaration.events
     .filter(event => event.visibility !== 'private' && event.visibility !== 'protected')
     .slice(0, 8);
-  const lines = [`const ${tagNameToIdentifier(tagToken.text)}: {`];
+  const lines = [`class ${componentClassName(declaration, tagToken.text, typescript)} {`];
   for (const member of properties) {
     lines.push(`  ${typescriptPropertyName(member.propName)}: ${typeForMember(member, checker, typescript)};`);
   }
   for (const event of events) {
     lines.push(`  ${JSON.stringify(`@${event.name}`)}: ${typeForEvent(event, checker, typescript)};`);
   }
-  lines.push('};');
+  lines.push('}');
   return {
     range: offsetsToRange(document, tagToken.start, tagToken.end),
     contents: { language: 'typescript', value: lines.join('\n') },
@@ -580,9 +603,25 @@ function typeForEvent(event: ComponentEvent, checker: ts.TypeChecker, typescript
   return 'Event';
 }
 
-function tagNameToIdentifier(tagName: string): string {
-  const identifier = tagName.replace(/-([a-z0-9])/g, (_, character: string) => character.toUpperCase());
-  return /^[A-Za-z_$]/.test(identifier) ? identifier : `element${identifier}`;
+function componentClassName(
+  declaration: ComponentDeclaration,
+  tagName: string,
+  typescript: typeof ts,
+): string {
+  const node = declaration.node as unknown as ts.Node;
+  if ((typescript.isClassDeclaration(node) || typescript.isClassExpression(node)) && node.name) {
+    return node.name.text;
+  }
+  const symbolName = declaration.symbol?.getName();
+  if (symbolName && symbolName !== 'default' && /^[A-Za-z_$][\w$]*$/.test(symbolName)) {
+    return symbolName;
+  }
+  const fallback = tagName
+    .split('-')
+    .filter(Boolean)
+    .map(part => part[0]?.toUpperCase() + part.slice(1))
+    .join('');
+  return /^[A-Za-z_$][\w$]*$/.test(fallback) ? fallback : 'LitElementComponent';
 }
 
 function typescriptPropertyName(name: string): string {

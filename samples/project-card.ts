@@ -2,7 +2,7 @@ import { css, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 @customElement('project-card')
-export class ProjectCard extends LitElement {
+export class ProjectCardElement extends LitElement {
   static styles = css`
     :host {
       --project-card-accent: rebeccapurple;
@@ -30,6 +30,6 @@ export class ProjectCard extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'project-card': ProjectCard;
+    'project-card': ProjectCardElement;
   }
 }

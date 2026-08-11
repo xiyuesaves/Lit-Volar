@@ -4,6 +4,7 @@ samples/**
 scripts/**
 src/**
 node_modules/**
+.pnpm-store/**
 tsconfig.json
 pnpm-lock.yaml
 pnpm-workspace.yaml

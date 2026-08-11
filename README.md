@@ -42,7 +42,7 @@ Useful manual checks in `samples/lit-demo.ts`:
 - `litVolar.maxProjectImportDepth` and `litVolar.maxNodeModuleImportDepth`
 - `litVolar.securitySystem`, `litVolar.dontShowSuggestions`, and `litVolar.logging`
 
-Configuration and metadata changes restart the language server automatically. Rule values are `off`, `warning`, or `error`. The default profile enables only low-false-positive syntax checks; `strict` enables the full reference analyzer profile, and explicit rules always take precedence.
+Configuration and metadata changes restart the language server automatically. Rule values are `off`, `warning`, or `error`. The default profile enables low-false-positive syntax checks plus high-confidence property, event-handler, and boolean binding checks. `strict` layers the full reference analyzer profile over those defaults, and explicit rules always take precedence.
 
 The extension discovers `custom-elements.json`, `package.json#customElements`, imported dependency manifests, and configured manifest globs. Semantic features recognize configured aliases and qualified tags such as `lit.html`; TextMate highlighting remains limited to the standard static tag names.
 

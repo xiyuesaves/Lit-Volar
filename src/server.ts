@@ -10,6 +10,7 @@ import { create as createEmmetService } from 'volar-service-emmet';
 import { create as createHtmlService } from 'volar-service-html';
 import { normalizeConfig, type LitVolarConfig } from './config';
 import { wrapCssService } from './cssService';
+import { wrapHtmlService } from './htmlService';
 import { createLitLanguagePlugin } from './languagePlugin';
 import { createLitProjectService } from './litService';
 import { litHtmlDataProvider } from './litHtmlData';
@@ -38,15 +39,15 @@ connection.onInitialize(params => {
     [
       createTypeScriptBridge(loadedTs.typescript),
       createLitProjectService(loadedTs.typescript, config),
-      createHtmlService({
+      wrapHtmlService(createHtmlService({
         documentSelector: ['html'],
         getCustomData: () => [litHtmlDataProvider],
-      }),
-      createHtmlService({
+      }), config),
+      wrapHtmlService(createHtmlService({
         documentSelector: ['svg'],
         useDefaultDataProvider: false,
         getCustomData: () => [svgHtmlDataProvider, litHtmlDataProvider],
-      }),
+      }), config),
       wrapCssService(createCssService(), config),
       createEmmetService(),
     ],

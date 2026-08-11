@@ -34,7 +34,7 @@
     "test:extension": "node ./scripts/run-extension-tests.mjs",
     "smoke:lsp": "node ./scripts/smoke-lsp.mjs",
     "verify": "pnpm check && pnpm test && pnpm build && pnpm smoke:lsp && pnpm test:extension",
-    "package": "pnpm verify && vsce package --no-dependencies --allow-missing-repository"
+    "package": "pnpm verify && vsce package --no-dependencies --allow-missing-repository --no-rewrite-relative-links"
   },
   "contributes": {
     "configuration": {

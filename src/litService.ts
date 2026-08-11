@@ -250,7 +250,8 @@ export function createLitProjectService(
           if (offset === undefined) return;
           return safely(undefined, () => {
             const info = analyzer.getQuickInfoAtPosition(source.file, offset);
-            const tagToken = customTagTokenAt(document.getText(), documentOffset);
+            const documentText = document.getText();
+            const tagToken = customTagTokenAt(documentText, documentOffset);
             if (tagToken) {
               const definition = analyzerContext.definitionStore.getDefinitionForTagName(tagToken.text);
               const instanceHover = definition && litInstanceHover(
@@ -270,6 +271,20 @@ export function createLitProjectService(
                 document.offsetAt(infoRange.start),
                 document.offsetAt(infoRange.end),
               )) {
+                const propertyInfo = document.languageId === 'html'
+                  ? propertyQuickInfoText(
+                    documentText,
+                    documentOffset,
+                    info.primaryInfo,
+                    analyzerContext.definitionStore.getDefinitionForTagName(
+                      enclosingStartTag(documentText, documentOffset) ?? '',
+                    ),
+                    typescript,
+                  )
+                  : undefined;
+                if (propertyInfo) {
+                  return typescriptQuickInfoHover(infoRange, propertyInfo, info.secondaryInfo);
+                }
                 return {
                   range: infoRange,
                   contents: {
@@ -644,6 +659,43 @@ function litInstanceHover(
     range: offsetsToRange(document, tagToken.start, tagToken.end),
     contents: { language: 'typescript', value: lines.join('\n') },
   };
+}
+
+function typescriptQuickInfoHover(
+  range: ReturnType<typeof offsetsToRange>,
+  primaryInfo: string,
+  secondaryInfo?: string,
+) {
+  return {
+    range,
+    contents: {
+      kind: 'markdown' as const,
+      value: [
+        `\`\`\`typescript\n${primaryInfo.trim()}\n\`\`\``,
+        secondaryInfo,
+      ].filter(Boolean).join('\n\n'),
+    },
+  };
+}
+
+function propertyQuickInfoText(
+  text: string,
+  offset: number,
+  primaryInfo: string,
+  definition: ComponentDefinition | undefined,
+  typescript: typeof ts,
+): string | undefined {
+  const token = tokenAt(text, offset);
+  if (!token?.text.startsWith('.')) return undefined;
+  const propertyName = token.text.slice(1);
+  const declaration = definition?.declaration;
+  const prefix = `(property) .${propertyName}`;
+  const normalized = primaryInfo.trim();
+  if (!normalized.startsWith(prefix)) return normalized;
+  const typeSuffix = normalized.slice(prefix.length);
+  if (!declaration) return normalized;
+  const className = componentClassName(declaration, definition!.tagName, typescript);
+  return `(property) ${className}.${propertyName}${typeSuffix}`;
 }
 
 function inheritanceChain(type: ts.Type, checker: ts.TypeChecker, typescript: typeof ts): string[] {

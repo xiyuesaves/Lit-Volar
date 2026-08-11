@@ -1,6 +1,10 @@
 import { css, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
+export interface ProjectCardData {
+  id: number;
+}
+
 @customElement('project-card')
 export class ProjectCardElement extends LitElement {
   static styles = css`
@@ -18,6 +22,8 @@ export class ProjectCardElement extends LitElement {
   @property({ type: Boolean }) active = false;
 
   @property({ type: Number }) test = 0;
+
+  @property({ attribute: false }) data: ProjectCardData = { id: 0 };
 
   setActive(active: boolean) {
     this.active = active;

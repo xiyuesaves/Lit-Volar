@@ -392,6 +392,16 @@ try {
   assert.doesNotMatch(litInstanceText, /\/\/ attribute:/, 'Lit instance Hover included generated attribute comments');
   assert.doesNotMatch(litInstanceText, /Inheritance|Declared in|\| Binding \|/, 'Lit instance Hover included documentation UI instead of Quick Info');
 
+  const propertyHover = await requestAt(
+    "import { html } from 'lit'; import './project-card'; const view = html`<project-card .dat|a=${{ id: 1 }}></project-card>`;",
+    'samples/project-consumer.ts',
+    'textDocument/hover',
+  );
+  const propertyHoverText = propertyHover?.contents?.value ?? '';
+  assert.match(propertyHoverText, /^```typescript/m, 'Property Hover did not use TypeScript code highlighting');
+  assert.match(propertyHoverText, /\(property\) ProjectCardElement\.data: ProjectCardData/,
+    'Property Hover did not use the standard TypeScript Quick Info display string');
+
   const inheritedHover = await requestAt(
     "import { html } from 'lit'; import './api-card'; const view = html`<api-c|ard></api-card>`;",
     'samples/project-consumer.ts',

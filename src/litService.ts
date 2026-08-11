@@ -22,8 +22,9 @@ import {
 import type ts from 'typescript';
 import { URI } from 'vscode-uri';
 import type { ComponentDeclaration, ComponentDefinition, ComponentEvent, ComponentMember } from 'web-component-analyzer';
-import { loadCemProjectData, resolveConfigPaths, type CemElement, type CemFeature, type CemProjectData } from './cemData';
-import type { LitVolarConfig } from './config';
+import { BindingRegistry, type BindingMetadata } from './bindingRegistry';
+import { loadCemProjectData, resolveConfigPaths, type CemFeature, type CemProjectData } from './cemData';
+import { getConfigVersion, type LitVolarConfig } from './config';
 import { typescriptInjectionKeys } from './typescriptBridge';
 
 interface UriConverter {
@@ -68,9 +69,12 @@ export function createLitProjectService(
 
       let currentToken: { isCancellationRequested: boolean } | undefined;
       let configuredProgram: ts.Program | undefined;
+      let configuredVersion = -1;
+      let analyzerConfigSignature: string | undefined;
       let cemData: CemProjectData = { elements: new Map(), htmlData: [], manifestFiles: [] };
       const projectRoot = path.dirname(context.project.typescript?.configFileName
         ?? path.join(context.project.typescript?.languageServiceHost.getCurrentDirectory() ?? process.cwd(), 'tsconfig.json'));
+      let bindingRegistry = new BindingRegistry(typescript, config, projectRoot);
       const analyzerContext = new DefaultLitAnalyzerContext({
         ts: typescript,
         getProgram: () => languageService.getProgram()!,
@@ -86,10 +90,19 @@ export function createLitProjectService(
         currentToken = token;
         const program = languageService.getProgram();
         if (!program || config.disable) return undefined;
-        if (configuredProgram !== program) {
+        const configVersion = getConfigVersion(config);
+        if (configuredProgram !== program || configuredVersion !== configVersion) {
           configuredProgram = program;
-          cemData = loadCemProjectData(projectRoot, config, program);
-          analyzerContext.updateConfig(createAnalyzerConfig(config, projectRoot, cemData));
+          if (configuredVersion !== configVersion) {
+            configuredVersion = configVersion;
+            bindingRegistry = new BindingRegistry(typescript, config, projectRoot);
+          }
+          cemData = loadCemProjectData(projectRoot, config, program, typescript);
+          const nextConfigSignature = `${configVersion}:${cemDataSignature(cemData)}`;
+          if (analyzerConfigSignature !== nextConfigSignature) {
+            analyzerConfigSignature = nextConfigSignature;
+            analyzerContext.updateConfig(createAnalyzerConfig(config, projectRoot, cemData));
+          }
         }
         return program;
       };
@@ -167,8 +180,16 @@ export function createLitProjectService(
             // Refresh the analyzer's component store before reading the tag definition.
             analyzer.getQuickInfoAtPosition(source.file, sourceOffset);
             const definition = analyzerContext.definitionStore.getDefinitionForTagName(binding.tagName);
-            const cemElement = cemData.elements.get(binding.tagName);
-            return isKnownLitBinding(binding, definition, cemElement) ? '\\${$0}' : undefined;
+            const program = languageService.getProgram();
+            if (!program) return undefined;
+            return bindingRegistry.hasBinding(
+              binding.tagName,
+              binding.modifier,
+              binding.name,
+              program,
+              definition,
+              cemData,
+            ) ? '\\${$0}' : undefined;
           });
         },
 
@@ -182,17 +203,41 @@ export function createLitProjectService(
           return safely({ isIncomplete: false, items: [] }, () => {
             const analyzerCompletions = analyzer.getCompletionsAtPosition(source.file, offset) ?? [];
             const tagName = enclosingStartTag(document.getText(), documentOffset);
+            const program = languageService.getProgram();
+            if (!program) return { isIncomplete: false, items: [] };
+            const before = document.getText().slice(0, documentOffset);
+            const isLitBindingContext = document.languageId === 'html'
+              && /(?:^|\s)[.?@][\w-]*$/.test(before);
+            const isCustomTagContext = document.languageId === 'html' && tagName?.includes('-') === true;
+            const isTagNameContext = document.languageId === 'html' && /<\/?[\w.-]*$/.test(before);
+            const isSlotContext = document.languageId === 'html' && /\bslot\s*=\s*["'][\w-]*$/.test(before);
+            const isLitCssContext = document.languageId === 'css'
+              && /(?:::part\(\s*[\w-]*|var\(\s*--[\w-]*|--[\w-]*)$/.test(before);
+            if (!isLitBindingContext
+              && !isCustomTagContext
+              && !isTagNameContext
+              && !isSlotContext
+              && !isLitCssContext) return;
             const definition = tagName
               ? analyzerContext.definitionStore.getDefinitionForTagName(tagName)
               : undefined;
             const analyzerItems = analyzerCompletions
-              .filter(item => item.importance !== 'low' && !isLitPropertyAttributeCompletion(item, definition))
+              .filter(item => item.importance !== 'low'
+                && !/^[.?@]/.test(item.name)
+                && !isLitPropertyAttributeCompletion(item, definition))
               .map(item => completionFromAnalyzer(document, item, source.documentRange))
               .filter((item): item is CompletionItem => item !== undefined);
-            const seen = new Set(analyzerItems.map(completionKey));
+            const registryItems = tagName
+              ? completionsFromRegistry(
+                  document,
+                  documentOffset,
+                  bindingRegistry.getBindings(tagName, program, definition, cemData),
+                )
+              : [];
+            const seen = new Set([...analyzerItems, ...registryItems].map(completionKey));
             const cemItems = completionsFromCem(document, documentOffset, cemData)
               .filter(item => !seen.has(completionKey(item)));
-            return { isIncomplete: false, items: [...analyzerItems, ...cemItems] };
+            return { isIncomplete: false, items: [...registryItems, ...analyzerItems, ...cemItems] };
           });
         },
 
@@ -333,6 +378,18 @@ export function createLitProjectService(
   };
 }
 
+function cemDataSignature(data: CemProjectData): string {
+  return data.manifestFiles.map(fileName => {
+    try {
+      const stat = fs.statSync(fileName);
+      return `${fileName}:${stat.mtimeMs}:${stat.size}`;
+    }
+    catch {
+      return fileName;
+    }
+  }).join('|');
+}
+
 function createAnalyzerConfig(config: LitVolarConfig, projectRoot: string, cemData: CemProjectData): LitAnalyzerConfig {
   return makeConfig({
     disable: config.disable,
@@ -416,6 +473,37 @@ function completionKey(item: { label: string; textEdit?: { newText: string }; in
   return `${item.label}\0${item.textEdit?.newText ?? item.insertText ?? ''}`;
 }
 
+function completionsFromRegistry(
+  document: TextDocument,
+  offset: number,
+  bindings: BindingMetadata[],
+): CompletionItem[] {
+  const before = document.getText().slice(0, offset);
+  const startTag = /<([\w.-]+)\b([^<>]*)$/.exec(before);
+  if (!startTag) return [];
+  const partial = /(?:^|\s)([.?@]?[\w-]*)$/.exec(startTag[2])?.[1];
+  if (partial === undefined) return [];
+  const requestedModifier = /^[.?@]/.test(partial) ? partial[0] : '';
+  const start = offset - partial.length;
+  return bindings
+    .filter(binding => binding.modifier === requestedModifier)
+    .map(binding => {
+      const label = `${binding.modifier}${binding.name}`;
+      const insert = withLitBindingValue(label, label);
+      return {
+        label,
+        kind: (binding.modifier === '@' ? 23 : 10) as CompletionItemKind,
+        detail: binding.type,
+        sortText: `${binding.inherited ? '2' : '1'}-${label}`,
+        documentation: binding.description
+          ? { kind: 'markdown' as const, value: binding.description }
+          : undefined,
+        textEdit: { range: offsetsToRange(document, start, offset), newText: insert },
+        insertTextFormat: (binding.modifier ? 2 : 1) as InsertTextFormat,
+      };
+    });
+}
+
 function completionsFromCem(document: TextDocument, offset: number, data: CemProjectData) {
   const before = document.getText().slice(0, offset);
   const tagMatch = /<([\w.-]*)$/.exec(before);
@@ -432,21 +520,7 @@ function completionsFromCem(document: TextDocument, offset: number, data: CemPro
   const slotMatch = /\bslot\s*=\s*["']([\w-]*)$/.exec(before);
   if (slotMatch) return allFeatures(data, 'slots', slotMatch[1], document, offset, 12 as CompletionItemKind);
 
-  const startTag = /<([\w.-]+)\s+[^<>]*$/.exec(before);
-  if (!startTag) return [];
-  const element = data.elements.get(startTag[1]);
-  if (!element) return [];
-  const partial = /([@.?]?[\w-]*)$/.exec(before)?.[1] ?? '';
-  const propertyNames = new Set(element.properties.map(property => property.name));
-  const features = [
-    ...element.attributes.filter(item => !propertyNames.has(item.name)).map(item => [item, item.name] as const),
-    ...element.attributes.filter(item => item.type === 'boolean').map(item => [item, `?${item.name}`] as const),
-    ...element.properties.map(item => [item, `.${item.name}`] as const),
-    ...element.events.map(item => [item, `@${item.name}`] as const),
-  ];
-  return features
-    .filter(([, name]) => name.startsWith(partial))
-    .map(([feature, name]) => cemCompletion(feature, name, offset - partial.length, offset, document, 10 as CompletionItemKind));
+  return [];
 }
 
 function allFeatures(
@@ -527,17 +601,37 @@ function litInstanceHover(
   const inheritance = inheritanceChain(instanceType, checker, typescript);
   if (!inheritance.some(name => name === 'LitElement' || name === 'ReactiveElement')) return undefined;
 
-  const properties = declaration.members
+  const propertyCandidates = declaration.members
     .filter((member): member is ComponentMember & { kind: 'property' } =>
       member.kind === 'property'
       && member.visibility !== 'private'
       && member.visibility !== 'protected'
-      && member.node.getSourceFile() === declaration.sourceFile
-      && (member.meta !== undefined || member.attrName !== undefined))
-    .slice(0, 8);
-  const events = declaration.events
-    .filter(event => event.visibility !== 'private' && event.visibility !== 'protected')
-    .slice(0, 8);
+      && (member.meta !== undefined || member.attrName !== undefined)
+      && isVisibleComponentApiSource(
+        member.node.getSourceFile() as unknown as ts.SourceFile,
+        declaration.sourceFile as unknown as ts.SourceFile,
+        program,
+      ));
+  const properties = dedupeByName(
+    propertyCandidates.sort((left, right) =>
+      Number(left.node.getSourceFile() !== declaration.sourceFile)
+      - Number(right.node.getSourceFile() !== declaration.sourceFile)),
+    member => member.propName,
+  );
+  const events = dedupeByName(
+    declaration.events
+      .filter(event => event.visibility !== 'private'
+        && event.visibility !== 'protected'
+        && isVisibleComponentApiSource(
+          event.node.getSourceFile() as unknown as ts.SourceFile,
+          declaration.sourceFile as unknown as ts.SourceFile,
+          program,
+        ))
+      .sort((left, right) =>
+        Number(left.node.getSourceFile() !== declaration.sourceFile)
+        - Number(right.node.getSourceFile() !== declaration.sourceFile)),
+    event => event.name,
+  );
   const lines = [`class ${componentClassName(declaration, tagToken.text, typescript)} {`];
   for (const member of properties) {
     lines.push(`  ${typescriptPropertyName(member.propName)}: ${typeForMember(member, checker, typescript)};`);
@@ -555,7 +649,7 @@ function litInstanceHover(
 function inheritanceChain(type: ts.Type, checker: ts.TypeChecker, typescript: typeof ts): string[] {
   const names: string[] = [];
   let current: ts.Type | undefined = type;
-  for (let depth = 0; current && depth < 6; depth++) {
+  for (let depth = 0; current && depth < 32; depth++) {
     const name = current.getSymbol()?.getName() ?? checker.typeToString(current);
     if (name && name !== '{}') names.push(name);
     if ((current.flags & typescript.TypeFlags.Object) === 0) break;
@@ -569,6 +663,26 @@ function inheritanceChain(type: ts.Type, checker: ts.TypeChecker, typescript: ty
     current = bases[0];
   }
   return names;
+}
+
+function isVisibleComponentApiSource(
+  sourceFile: ts.SourceFile,
+  declarationSource: ts.SourceFile,
+  program: ts.Program,
+): boolean {
+  if (sourceFile === declarationSource) return true;
+  return !program.isSourceFileDefaultLibrary(sourceFile)
+    && !program.isSourceFileFromExternalLibrary(sourceFile)
+    && !sourceFile.fileName.replace(/\\/g, '/').includes('/node_modules/');
+}
+
+function dedupeByName<T>(values: T[], nameOf: (value: T) => string): T[] {
+  const result = new Map<string, T>();
+  for (const value of values) {
+    const name = nameOf(value);
+    if (!result.has(name)) result.set(name, value);
+  }
+  return [...result.values()];
 }
 
 function typeForMember(member: ComponentMember, checker: ts.TypeChecker, typescript: typeof ts): string {
@@ -752,35 +866,6 @@ function litBindingAtOffset(text: string, offset: number): LitBinding | undefine
   }
   if (quote) return undefined;
   return { tagName: startTag[1], modifier, name: match[2] };
-}
-
-function isKnownLitBinding(
-  binding: LitBinding,
-  definition: ComponentDefinition | undefined,
-  cemElement: CemElement | undefined,
-): boolean {
-  const declaration = definition?.declaration;
-  if (binding.modifier === '@') {
-    return declaration?.events.some(event =>
-      event.name === binding.name
-      && event.visibility !== 'private'
-      && event.visibility !== 'protected') === true
-      || cemElement?.events.some(event => event.name === binding.name) === true;
-  }
-  if (binding.modifier === '.') {
-    return declaration?.members.some(member =>
-      member.kind === 'property'
-      && member.propName === binding.name
-      && member.visibility !== 'private'
-      && member.visibility !== 'protected') === true
-      || cemElement?.properties.some(property => property.name === binding.name) === true;
-  }
-  return declaration?.members.some(member =>
-    member.kind === 'property'
-    && member.attrName === binding.name
-    && member.visibility !== 'private'
-    && member.visibility !== 'protected') === true
-    || cemElement?.attributes.some(attribute => attribute.name === binding.name) === true;
 }
 
 function tokenAt(text: string, offset: number): { text: string; start: number; end: number } | undefined {

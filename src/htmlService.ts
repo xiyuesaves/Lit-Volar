@@ -1,22 +1,27 @@
-import type { CompletionItem, LanguageServicePlugin } from '@volar/language-service';
+import type { CompletionItem, LanguageServicePlugin, TextDocument } from '@volar/language-service';
+import type { BindingMetadata, DomHtmlDataProvider } from './bindingRegistry';
 import type { LitVolarConfig } from './config';
-import { defaultLitBooleans, defaultLitEvents, defaultLitProperties } from './litHtmlData';
+import type { CemProjectData } from './cemData';
 
-const litExpressionSnippet = '\\${$0}';
-
-export function wrapHtmlService(
+export function withLitDomBindings(
   service: LanguageServicePlugin,
+  data: DomHtmlDataProvider,
   config: LitVolarConfig,
+  getCemData: () => CemProjectData,
 ): LanguageServicePlugin {
   return {
     ...service,
     capabilities: {
       ...service.capabilities,
+      // Embedded HTML highlights are advertised for the whole host document by LSP.
+      // That masks VS Code's TypeScript document highlights outside Lit templates.
+      documentHighlightProvider: undefined,
       completionProvider: {
         ...service.capabilities.completionProvider,
         triggerCharacters: [
           ...new Set([
             ...service.capabilities.completionProvider?.triggerCharacters ?? [],
+            '.',
             '?',
             '@',
           ]),
@@ -31,39 +36,114 @@ export function wrapHtmlService(
         ...instance,
         async provideCompletionItems(document, position, completionContext, token) {
           const completionList = await provideCompletionItems?.(document, position, completionContext, token);
-          if (!completionList) return completionList;
+          const litItems = [
+            ...domBindingCompletions(document, position, data, config, getCemData()),
+            ...cemTagCompletions(document, position, getCemData()),
+          ];
+          if (!completionList) return litItems.length > 0 ? { isIncomplete: false, items: litItems } : undefined;
+          const litLabels = new Set(litItems.map(item => item.label));
           return {
             ...completionList,
-            items: completionList.items.map(item => litBindingCompletion(item, config)),
+            items: [
+              ...litItems,
+              ...completionList.items.filter(item => !litLabels.has(item.label)),
+            ],
           };
         },
         async provideAutoInsertSnippet(document, position, lastChange, token) {
-          const snippet = await provideAutoInsertSnippet?.(document, position, lastChange, token);
-          if (!snippet) return snippet;
-          const binding = /([.?@][\w-]+)\s*=$/.exec(document.getText().slice(0, document.offsetAt(position)))?.[1];
-          return binding && isDefaultLitBinding(binding, config) ? litExpressionSnippet : snippet;
+          const binding = domBindingAtOffset(document.getText(), document.offsetAt(position));
+          if (binding && allBindings(binding.tagName, data, config, getCemData()).some(item =>
+            item.modifier === binding.modifier && item.name === binding.name)) return '\\${$0}';
+          return provideAutoInsertSnippet?.(document, position, lastChange, token);
         },
       };
     },
   };
 }
 
-function litBindingCompletion(item: CompletionItem, config: LitVolarConfig): CompletionItem {
-  if (!isDefaultLitBinding(item.label, config)) return item;
-  const insert = `${item.label}=${litExpressionSnippet}`;
-  return {
-    ...item,
-    insertText: item.textEdit ? item.insertText : insert,
-    textEdit: item.textEdit ? { ...item.textEdit, newText: insert } : item.textEdit,
-    insertTextFormat: 2,
-  };
+function domBindingCompletions(
+  document: TextDocument,
+  position: { line: number; character: number },
+  data: DomHtmlDataProvider,
+  config: LitVolarConfig,
+  cemData: CemProjectData,
+): CompletionItem[] {
+  const offset = document.offsetAt(position);
+  const match = /<([\w.-]+)\b([^<>]*)$/.exec(document.getText().slice(0, offset));
+  if (!match) return [];
+  const partial = /(?:^|\s)([.?@][\w-]*)$/.exec(match[2])?.[1];
+  if (!partial) return [];
+  const modifier = partial[0] as '.' | '?' | '@';
+  const range = { start: document.positionAt(offset - partial.length), end: position };
+  return allBindings(match[1], data, config, cemData)
+    .filter(binding => binding.modifier === modifier && `${modifier}${binding.name}`.startsWith(partial))
+    .map(binding => {
+      const label = `${modifier}${binding.name}`;
+      return {
+        label,
+        kind: modifier === '@' ? 23 : 10,
+        detail: binding.type,
+        documentation: binding.description
+          ? { kind: 'markdown' as const, value: binding.description }
+          : undefined,
+        textEdit: { range, newText: label + '=\\${$0}' },
+        insertTextFormat: 2,
+      };
+    });
 }
 
-function isDefaultLitBinding(label: string, config: LitVolarConfig): boolean {
-  const modifier = label[0];
-  const name = label.slice(1);
-  if (modifier === '@') return defaultLitEvents.includes(name) || config.globalEvents.includes(name);
-  if (modifier === '.') return defaultLitProperties.includes(name);
-  if (modifier === '?') return defaultLitBooleans.includes(name);
-  return false;
+function allBindings(
+  tagName: string,
+  data: DomHtmlDataProvider,
+  config: LitVolarConfig,
+  cemData: CemProjectData,
+): BindingMetadata[] {
+  const element = cemData.elements.get(tagName);
+  const propertyNames = new Set(element?.properties.map(feature => feature.name) ?? []);
+  return [
+    ...data.getLitBindings(tagName),
+    ...element?.attributes
+      .filter(feature => !propertyNames.has(feature.name))
+      .map(feature => ({ ...feature, modifier: '' as const, source: 'cem' as const })) ?? [],
+    ...element?.attributes
+      .filter(feature => feature.analysisType === 'boolean')
+      .map(feature => ({ ...feature, modifier: '?' as const, source: 'cem' as const })) ?? [],
+    ...element?.properties.map(feature => ({ ...feature, modifier: '.' as const, source: 'cem' as const })) ?? [],
+    ...element?.events.map(feature => ({ ...feature, modifier: '@' as const, source: 'cem' as const })) ?? [],
+    ...config.globalEvents.map(name => ({ name, modifier: '@' as const, source: 'custom-data' as const })),
+    ...config.globalAttributes.flatMap(value => {
+      const modifier = /^[.?@]/.test(value) ? value[0] as '.' | '?' | '@' : '' as const;
+      return [{ name: modifier ? value.slice(1) : value, modifier, source: 'custom-data' as const }];
+    }),
+  ];
+}
+
+function cemTagCompletions(
+  document: TextDocument,
+  position: { line: number; character: number },
+  data: CemProjectData,
+): CompletionItem[] {
+  const offset = document.offsetAt(position);
+  const partial = /<([\w.-]*)$/.exec(document.getText().slice(0, offset))?.[1];
+  if (partial === undefined) return [];
+  const range = { start: document.positionAt(offset - partial.length), end: position };
+  return [...data.elements.values()]
+    .filter(element => element.name.startsWith(partial))
+    .map(element => ({
+      label: element.name,
+      kind: 7,
+      detail: element.type,
+      documentation: element.description
+        ? { kind: 'markdown' as const, value: element.description }
+        : undefined,
+      textEdit: { range, newText: element.name },
+    }));
+}
+
+function domBindingAtOffset(
+  text: string,
+  offset: number,
+): { tagName: string; modifier: '.' | '?' | '@'; name: string } | undefined {
+  const match = /<([\w.-]+)\b[^<>]*?(?:^|\s)([.?@])([\w-]+)\s*=$/.exec(text.slice(0, offset));
+  return match ? { tagName: match[1], modifier: match[2] as '.' | '?' | '@', name: match[3] } : undefined;
 }

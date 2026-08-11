@@ -47,6 +47,21 @@ export interface LitVolarConfig {
   svgTemplateTags: string[];
 }
 
+const configVersions = new WeakMap<object, number>();
+
+export function getConfigVersion(config: LitVolarConfig): number {
+  return configVersions.get(config) ?? 0;
+}
+
+export function updateConfig(target: LitVolarConfig, value: Partial<LitVolarConfig>): void {
+  Object.assign(target, normalizeConfig(value));
+  configVersions.set(target, getConfigVersion(target) + 1);
+}
+
+export function touchConfig(config: LitVolarConfig): void {
+  configVersions.set(config, getConfigVersion(config) + 1);
+}
+
 export const defaultConfig: LitVolarConfig = {
   disable: false,
   strict: false,

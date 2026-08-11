@@ -7,6 +7,12 @@ export function wrapCssService(
 ): LanguageServicePlugin {
   return {
     ...service,
+    capabilities: {
+      ...service.capabilities,
+      // Keep document highlights owned by VS Code's TypeScript service. LSP cannot
+      // scope this capability to CSS ranges inside a tagged template.
+      documentHighlightProvider: undefined,
+    },
     create(context) {
       const instance = service.create(context);
       const provideDiagnostics = instance.provideDiagnostics?.bind(instance);

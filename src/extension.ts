@@ -12,9 +12,9 @@ import type { LitVolarConfig } from './config';
 
 let client: BaseLanguageClient | undefined;
 let autoInsertion: vscode.Disposable | undefined;
-let restartTimer: ReturnType<typeof setTimeout> | undefined;
-let restarting: Promise<void> | undefined;
 let labsInfo: ReturnType<typeof createLabsInfo> | undefined;
+let metadataWatchers: vscode.Disposable[] = [];
+let metadataRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 
 const documentSelector: DocumentSelector = [
   ...['file', 'untitled'].flatMap(scheme => [
@@ -28,24 +28,50 @@ const documentSelector: DocumentSelector = [
 export async function activate(context: vscode.ExtensionContext) {
   labsInfo = createLabsInfo();
   await startClient(context);
+  resetMetadataWatchers(context);
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('litVolar')) scheduleRestart(context);
+      if (event.affectsConfiguration('litVolar')) {
+        resetMetadataWatchers(context);
+        void client?.sendNotification('litVolar/updateConfig', readConfig());
+      }
     }),
-  );
-  const metadataWatcher = vscode.workspace.createFileSystemWatcher('**/*.json');
-  context.subscriptions.push(
-    metadataWatcher,
-    metadataWatcher.onDidCreate(() => scheduleRestart(context)),
-    metadataWatcher.onDidChange(() => scheduleRestart(context)),
-    metadataWatcher.onDidDelete(() => scheduleRestart(context)),
+    { dispose: disposeMetadataWatchers },
   );
 
   return labsInfo.extensionExports;
 }
 
+function resetMetadataWatchers(context: vscode.ExtensionContext): void {
+  disposeMetadataWatchers();
+  const config = vscode.workspace.getConfiguration('litVolar', vscode.workspace.workspaceFolders?.[0]?.uri);
+  const patterns = new Set([
+    '**/{package.json,tsconfig.json,jsconfig.json,custom-elements.json}',
+    ...config.get<string[]>('customHtmlData', []),
+    ...config.get<string[]>('customElementsManifests', []),
+  ]);
+  for (const pattern of patterns) {
+    if (!pattern.trim()) continue;
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern.replace(/\\/g, '/'));
+    metadataWatchers.push(
+      watcher,
+      watcher.onDidCreate(() => notifyMetadataRefresh()),
+      watcher.onDidChange(() => notifyMetadataRefresh()),
+      watcher.onDidDelete(() => notifyMetadataRefresh()),
+    );
+  }
+}
+
+function disposeMetadataWatchers(): void {
+  if (metadataRefreshTimer) clearTimeout(metadataRefreshTimer);
+  metadataRefreshTimer = undefined;
+  for (const watcher of metadataWatchers) watcher.dispose();
+  metadataWatchers = [];
+}
+
 async function startClient(context: vscode.ExtensionContext): Promise<void> {
+  const litVolarConfig = readConfig();
   const serverModule = vscode.Uri.joinPath(context.extensionUri, 'dist', 'server.js').fsPath;
   const serverOptions: ServerOptions = {
     run: {
@@ -61,7 +87,7 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
   const clientOptions: LanguageClientOptions = {
     documentSelector,
     initializationOptions: {
-      litVolar: readConfig(),
+      litVolar: litVolarConfig,
       typescript: { tsdk: (await getTsdk(context))?.tsdk },
     },
   };
@@ -83,25 +109,16 @@ export function deactivate(): Thenable<void> | undefined {
   return client?.stop();
 }
 
-function scheduleRestart(context: vscode.ExtensionContext): void {
-  if (restartTimer) clearTimeout(restartTimer);
-  restartTimer = setTimeout(() => {
-    restarting ??= restartClient(context).finally(() => {
-      restarting = undefined;
-    });
+function notifyMetadataRefresh(): void {
+  if (metadataRefreshTimer) clearTimeout(metadataRefreshTimer);
+  metadataRefreshTimer = setTimeout(() => {
+    metadataRefreshTimer = undefined;
+    void client?.sendNotification('litVolar/refresh');
   }, 250);
 }
 
-async function restartClient(context: vscode.ExtensionContext): Promise<void> {
-  autoInsertion?.dispose();
-  autoInsertion = undefined;
-  await client?.stop();
-  client = undefined;
-  await startClient(context);
-}
-
 function readConfig(): LitVolarConfig {
-  const config = vscode.workspace.getConfiguration('litVolar');
+  const config = vscode.workspace.getConfiguration('litVolar', vscode.workspace.workspaceFolders?.[0]?.uri);
   return {
     disable: config.get<boolean>('disable', false),
     strict: config.get<boolean>('strict', false),

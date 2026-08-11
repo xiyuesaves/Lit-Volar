@@ -47,9 +47,11 @@ export class LitRootVirtualCode implements VirtualCode {
 }
 
 export function createLitLanguagePlugin(
-  userConfig?: Partial<LitVolarConfig>,
+  userConfig?: Partial<LitVolarConfig> | (() => LitVolarConfig),
 ): LanguagePlugin<URI, LitRootVirtualCode> {
-  const config = normalizeConfig(userConfig);
+  const getConfig = typeof userConfig === 'function'
+    ? userConfig
+    : () => normalizeConfig(userConfig);
 
   return {
     getLanguageId(uri) {
@@ -59,10 +61,10 @@ export function createLitLanguagePlugin(
       if (!supportedLanguageIds.has(languageId)) {
         return undefined;
       }
-      return new LitRootVirtualCode(languageId, snapshot, config);
+      return new LitRootVirtualCode(languageId, snapshot, getConfig());
     },
     updateVirtualCode(_uri, _virtualCode, snapshot) {
-      return new LitRootVirtualCode(_virtualCode.languageId, snapshot, config);
+      return new LitRootVirtualCode(_virtualCode.languageId, snapshot, getConfig());
     },
     typescript: {
       extraFileExtensions: [],

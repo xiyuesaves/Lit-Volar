@@ -147,6 +147,17 @@ pnpm watch          # Rebuild bundles in watch mode
 
 For local interactive development, open the repository in VS Code and run **Run Lit Volar Extension** from Run and Debug. The launch configuration builds the extension and opens the `samples` workspace in an Extension Development Host.
 
+### Continuous integration and releases
+
+GitHub Actions verifies every push and pull request. Run the **Build** workflow manually to package the extension and retain the generated VSIX as a workflow artifact for 14 days.
+
+Marketplace publishing requires these repository settings:
+
+- Variable `VSCE_PUBLISHER`: the Publisher ID registered in Visual Studio Marketplace.
+- Secret `VSCE_PAT`: a Marketplace personal access token with extension publishing permission.
+
+To publish a release, update `package.json#version`, commit the change, and push a matching `v<version>` tag, for example `v0.2.0`. The workflow rejects tags that do not match the manifest version.
+
 The Extension Host runner uses VS Code `1.90.2` by default and downloads it on first use. Set `VSCODE_EXECUTABLE_PATH` to use an installed VS Code executable instead.
 
 The server is bundled with esbuild and uses IPC when launched by the extension. There is no CLI, `bin` entry, CLI command, or CLI activation event.

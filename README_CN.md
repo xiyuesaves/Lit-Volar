@@ -147,6 +147,17 @@ pnpm watch          # watch 模式构建
 
 交互式开发时，在 VS Code 中打开仓库，并在 Run and Debug 中运行 **Run Lit Volar Extension**。该配置会先构建扩展，再以 `samples` 目录启动 Extension Development Host。
 
+### 持续集成与发布
+
+GitHub Actions 会验证每次 push 和 pull request。手动运行 **Build** workflow 时会打包扩展，并将生成的 VSIX 作为 workflow artifact 保留 14 天。
+
+发布到 Marketplace 前，需要配置以下仓库设置：
+
+- Variable `VSCE_PUBLISHER`：在 Visual Studio Marketplace 注册的 Publisher ID。
+- Secret `VSCE_PAT`：拥有扩展发布权限的 Marketplace personal access token。
+
+发布新版本时，先更新 `package.json#version` 并提交，再推送匹配的 `v<version>` tag，例如 `v0.2.0`。如果 tag 与扩展清单版本不一致，workflow 会拒绝发布。
+
 Extension Host 测试默认使用 VS Code `1.90.2`，首次运行时会下载测试版本。也可以设置 `VSCODE_EXECUTABLE_PATH` 使用本机已安装的 VS Code。
 
 服务端使用 esbuild 打包，并由扩展通过 IPC 启动。项目不提供 CLI、`bin`、CLI command 或 CLI activation event。

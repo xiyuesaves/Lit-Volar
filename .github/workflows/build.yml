@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   build:
-    name: Verify and package
+    name: Verify, package, and publish
     runs-on: ubuntu-latest
 
     steps:
@@ -41,12 +41,31 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify and package extension
-        run: xvfb-run -a pnpm package
+      - name: Verify extension
+        run: xvfb-run -a pnpm verify
+
+      - name: Prepare Marketplace release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          VSCE_PUBLISHER: ${{ vars.VSCE_PUBLISHER }}
+        run: |
+          node -e "const fs = require('node:fs'); const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8')); const tagVersion = process.env.GITHUB_REF_NAME.slice(1); if (tagVersion !== manifest.version) throw new Error('Tag version ' + tagVersion + ' does not match package.json version ' + manifest.version); if (!process.env.VSCE_PUBLISHER) throw new Error('Repository variable VSCE_PUBLISHER is required'); manifest.publisher = process.env.VSCE_PUBLISHER; fs.writeFileSync('package.json', JSON.stringify(manifest, null, 2) + '\n');"
+
+      - name: Package extension
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        run: pnpm exec vsce package --no-dependencies
 
       - name: Upload VSIX
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: lit-volar-${{ github.sha }}
           path: '*.vsix'
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish to Visual Studio Marketplace
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: pnpm exec vsce publish --packagePath "lit-volar-${GITHUB_REF_NAME#v}.vsix"

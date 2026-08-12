@@ -1,10 +1,10 @@
 # Lit Volar 中文说明
 
 <p align="center">
-  <img src="./lit%20Volar.png" alt="Lit Volar logo" width="160">
+  <img src="./lit_Volar.png" alt="Lit Volar logo" width="160">
 </p>
 
-英文主文档请查看 `README.md`。
+英文主文档请查看 [README.md](./README.md)。
 
 Lit Volar 是一个 VS Code 扩展，为 Lit tagged template 提供 HTML、CSS、SVG 语言能力，并保留 VS Code 内置 TypeScript/JavaScript 服务处理宿主代码。
 

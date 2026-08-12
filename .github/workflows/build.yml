@@ -1,0 +1,52 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Verify and package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Restore VS Code test runtime
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test/vscode-*
+          key: ${{ runner.os }}-vscode-1.90.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify and package extension
+        run: xvfb-run -a pnpm package
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: lit-volar-${{ github.sha }}
+          path: '*.vsix'
+          if-no-files-found: error

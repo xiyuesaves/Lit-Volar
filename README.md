@@ -1,10 +1,10 @@
 # Lit Volar
 
 <p align="center">
-  <img src="./lit%20Volar.png" alt="Lit Volar logo" width="160">
+  <img src="./lit_Volar.png" alt="Lit Volar logo" width="160">
 </p>
 
-English documentation is the primary reference. See `README_CN.md` for the Chinese version.
+English documentation is the primary reference. See [README_CN.md](./README_CN.md) for the Chinese version.
 
 Lit Volar is a VS Code extension for Lit tagged templates. It adds Volar-powered HTML, CSS, and SVG language features while keeping VS Code's built-in TypeScript and JavaScript services in charge of host-language code.
 

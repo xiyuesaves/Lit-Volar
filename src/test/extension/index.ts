@@ -4,7 +4,9 @@ import * as vscode from 'vscode';
 const timeout = 30_000;
 
 export async function run(): Promise<void> {
-  const extension = vscode.extensions.getExtension('local.lit-volar');
+  const extension = vscode.extensions.all.find(candidate =>
+    candidate.packageJSON.name === 'lit-volar'
+    && candidate.packageJSON.displayName === 'Lit Volar');
   assert.ok(extension, 'Lit Volar extension was not discovered');
   await extension.activate();
 

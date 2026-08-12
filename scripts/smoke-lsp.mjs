@@ -109,6 +109,42 @@ async function completionAt(sourceWithMarker, fileName, context = { triggerKind:
   return Array.isArray(completion) ? completion : completion?.items ?? [];
 }
 
+async function completionAtUntilLabel(
+  sourceWithMarker,
+  fileName,
+  expectedLabel,
+  context = { triggerKind: 1 },
+  timeoutMs = 10_000,
+) {
+  const markerOffset = sourceWithMarker.indexOf('|');
+  assert.notEqual(markerOffset, -1, 'Completion fixture must include a marker');
+  const text = sourceWithMarker.slice(0, markerOffset) + sourceWithMarker.slice(markerOffset + 1);
+  const uri = pathToFileURL(path.resolve(fileName.includes('/') ? fileName : path.join('.lsp-smoke', fileName))).href;
+  const deadline = Date.now() + timeoutMs;
+  let items = [];
+
+  notify('textDocument/didOpen', {
+    textDocument: { uri, languageId: 'typescript', version: 1, text },
+  });
+  try {
+    // Project discovery is incremental because each analyzer completion has a small time budget.
+    do {
+      const completion = await request('textDocument/completion', {
+        textDocument: { uri },
+        position: positionAt(text, markerOffset),
+        context,
+      });
+      items = Array.isArray(completion) ? completion : completion?.items ?? [];
+      if (labels(items).includes(expectedLabel.toLowerCase())) return items;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    } while (Date.now() < deadline);
+    return items;
+  }
+  finally {
+    notify('textDocument/didClose', { textDocument: { uri } });
+  }
+}
+
 async function requestAt(sourceWithMarker, fileName, method, params = {}) {
   const markerOffset = sourceWithMarker.indexOf('|');
   assert.notEqual(markerOffset, -1, `${method} fixture must include a marker`);
@@ -262,9 +298,10 @@ try {
   );
   assert.equal(interpolationItems.length, 0, 'Volar should defer interpolation completion to TypeScript');
 
-  const projectTagItems = await completionAt(
+  const projectTagItems = await completionAtUntilLabel(
     "import { html } from 'lit'; const view = html`<pro|`;",
     'samples/project-consumer.ts',
+    'project-card',
   );
   assert.ok(labels(projectTagItems).includes('project-card'), 'Project TypeScript metadata did not complete project-card');
 

@@ -31,7 +31,10 @@ class Component extends LitElement {
     const items = completions(fixture);
     assert.deepEqual(items.map(item => item.label), ['firstUpdated']);
     assert.match(items[0].textEdit!.newText, /protected override firstUpdated/);
-    assert.match(items[0].textEdit!.newText, /import\('@lit\/reactive-element'\)\.PropertyValues<this>/);
+    assert.match(items[0].textEdit!.newText, /changedProperties: PropertyValues<this>/);
+    assert.doesNotMatch(items[0].textEdit!.newText, /import\(/);
+    assert.doesNotMatch(items[0].textEdit!.newText, /@lit\/reactive-element/);
+    assert.equal(items[0].additionalTextEdits?.[0].newText, "import type { PropertyValues } from 'lit';\n");
   });
 
   it('omits lifecycle methods already implemented by the current class', () => {
@@ -58,6 +61,10 @@ class Component extends ReactiveElement {
     const reactiveLabels = completions(reactive).map(item => item.label);
     assert.ok(reactiveLabels.includes('willUpdate'));
     assert.ok(!reactiveLabels.includes('render'));
+    const reactiveWillUpdate = completions(reactive).find(item => item.label === 'willUpdate');
+    assert.match(reactiveWillUpdate!.textEdit!.newText, /changedProperties: PropertyValues<this>/);
+    assert.equal(reactiveWillUpdate!.additionalTextEdits?.[0].newText,
+      "import type { PropertyValues } from '@lit/reactive-element';\n");
 
     const ordinary = createFixture('class Component {\n  |\n}');
     assert.equal(completions(ordinary).length, 0);
@@ -74,6 +81,21 @@ class Component extends LitElement {
     assert.ok(item);
     assert.match(item.textEdit!.newText, /^updated\(changedProperties\)/);
     assert.doesNotMatch(item.textEdit!.newText, /override|PropertyValues|: void/);
+    assert.equal(item.additionalTextEdits, undefined);
+  });
+
+  it('reuses an existing PropertyValues type import', () => {
+    const fixture = createFixture(`
+import type { PropertyValues as LitChanges } from 'lit';
+${litDeclarations}
+class Component extends LitElement {
+  upd|
+}
+`);
+    const item = completions(fixture).find(candidate => candidate.label === 'updated');
+    assert.ok(item);
+    assert.match(item.textEdit!.newText, /changedProperties: LitChanges<this>/);
+    assert.equal(item.additionalTextEdits, undefined);
   });
 
   it('offers methods between class members but not inside a method body', () => {

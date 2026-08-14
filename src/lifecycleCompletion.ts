@@ -36,31 +36,31 @@ const lifecycleMethods: LifecycleMethod[] = [
   {
     name: 'shouldUpdate',
     detail: 'Determines whether the component should update.',
-    typescript: "protected override shouldUpdate(changedProperties: import('@lit/reactive-element').PropertyValues<this>): boolean {\n\treturn ${1:super.shouldUpdate(changedProperties)};\n}$0",
+    typescript: 'protected override shouldUpdate(changedProperties: PropertyValues<this>): boolean {\n\treturn ${1:super.shouldUpdate(changedProperties)};\n}$0',
     javascript: 'shouldUpdate(changedProperties) {\n\treturn ${1:super.shouldUpdate(changedProperties)};\n}$0',
   },
   {
     name: 'willUpdate',
     detail: 'Runs before the component update is performed.',
-    typescript: "protected override willUpdate(changedProperties: import('@lit/reactive-element').PropertyValues<this>): void {\n\tsuper.willUpdate(changedProperties);\n\t$0\n}",
+    typescript: 'protected override willUpdate(changedProperties: PropertyValues<this>): void {\n\tsuper.willUpdate(changedProperties);\n\t$0\n}',
     javascript: 'willUpdate(changedProperties) {\n\tsuper.willUpdate(changedProperties);\n\t$0\n}',
   },
   {
     name: 'update',
     detail: 'Reflects properties and renders the component update.',
-    typescript: "protected override update(changedProperties: import('@lit/reactive-element').PropertyValues<this>): void {\n\tsuper.update(changedProperties);\n\t$0\n}",
+    typescript: 'protected override update(changedProperties: PropertyValues<this>): void {\n\tsuper.update(changedProperties);\n\t$0\n}',
     javascript: 'update(changedProperties) {\n\tsuper.update(changedProperties);\n\t$0\n}',
   },
   {
     name: 'firstUpdated',
     detail: 'Runs after the component is updated for the first time.',
-    typescript: "protected override firstUpdated(changedProperties: import('@lit/reactive-element').PropertyValues<this>): void {\n\tsuper.firstUpdated(changedProperties);\n\t$0\n}",
+    typescript: 'protected override firstUpdated(changedProperties: PropertyValues<this>): void {\n\tsuper.firstUpdated(changedProperties);\n\t$0\n}',
     javascript: 'firstUpdated(changedProperties) {\n\tsuper.firstUpdated(changedProperties);\n\t$0\n}',
   },
   {
     name: 'updated',
     detail: 'Runs after the component update is complete.',
-    typescript: "protected override updated(changedProperties: import('@lit/reactive-element').PropertyValues<this>): void {\n\tsuper.updated(changedProperties);\n\t$0\n}",
+    typescript: 'protected override updated(changedProperties: PropertyValues<this>): void {\n\tsuper.updated(changedProperties);\n\t$0\n}',
     javascript: 'updated(changedProperties) {\n\tsuper.updated(changedProperties);\n\t$0\n}',
   },
   {
@@ -92,27 +92,73 @@ export function litLifecycleCompletions(
     .map(member => memberName(typescript, member))
     .filter((name): name is string => name !== undefined));
   const isTypeScript = !/\.(?:[cm]?js|jsx)$/i.test(sourceFile.fileName);
+  const propertyValuesModule = inheritance.litElement ? 'lit' : '@lit/reactive-element';
+  const propertyValues = propertyValuesReference(typescript, sourceFile, document, propertyValuesModule);
 
   return lifecycleMethods
     .filter(method => (!method.litElementOnly || inheritance.litElement)
       && !existing.has(method.name)
       && method.name.toLowerCase().startsWith(prefix.toLowerCase()))
-    .map(method => ({
-      label: method.name,
-      kind: 2 as CompletionItemKind,
-      detail: `Lit lifecycle method - ${method.detail}`,
-      documentation: method.detail,
-      filterText: method.name,
-      sortText: `0_lit_${method.name}`,
-      insertTextFormat: 2 as InsertTextFormat,
-      textEdit: {
-        range: {
-          start: document.positionAt(wordStart),
-          end: document.positionAt(offset),
+    .map(method => {
+      const needsPropertyValues = isTypeScript && method.typescript.includes('PropertyValues');
+      return {
+        label: method.name,
+        kind: 2 as CompletionItemKind,
+        detail: `Lit lifecycle method - ${method.detail}`,
+        documentation: method.detail,
+        filterText: method.name,
+        sortText: `0_lit_${method.name}`,
+        insertTextFormat: 2 as InsertTextFormat,
+        textEdit: {
+          range: {
+            start: document.positionAt(wordStart),
+            end: document.positionAt(offset),
+          },
+          newText: isTypeScript
+            ? method.typescript.replaceAll('PropertyValues', propertyValues.typeName)
+            : method.javascript,
         },
-        newText: isTypeScript ? method.typescript : method.javascript,
-      },
-    }));
+        additionalTextEdits: needsPropertyValues && propertyValues.importEdit
+          ? [propertyValues.importEdit]
+          : undefined,
+      };
+    });
+}
+
+function propertyValuesReference(
+  typescript: typeof ts,
+  sourceFile: ts.SourceFile,
+  document: TextDocument,
+  preferredModule: 'lit' | '@lit/reactive-element',
+): {
+  typeName: string;
+  importEdit?: { range: { start: { line: number; character: number }; end: { line: number; character: number } }; newText: string };
+} {
+  const supportedModules = new Set(['lit', 'lit-element', '@lit/reactive-element']);
+  for (const statement of sourceFile.statements) {
+    if (!typescript.isImportDeclaration(statement)
+      || !typescript.isStringLiteral(statement.moduleSpecifier)
+      || !supportedModules.has(statement.moduleSpecifier.text)) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings) continue;
+    if (typescript.isNamespaceImport(bindings)) {
+      return { typeName: `${bindings.name.text}.PropertyValues` };
+    }
+    const propertyValues = bindings.elements.find(element =>
+      (element.propertyName?.text ?? element.name.text) === 'PropertyValues');
+    if (propertyValues) return { typeName: propertyValues.name.text };
+  }
+
+  const newline = sourceFile.text.includes('\r\n') ? '\r\n' : '\n';
+  const importOffset = sourceFile.text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const position = document.positionAt(importOffset);
+  return {
+    typeName: 'PropertyValues',
+    importEdit: {
+      range: { start: position, end: position },
+      newText: `import type { PropertyValues } from '${preferredModule}';${newline}`,
+    },
+  };
 }
 
 function classAtOffset(

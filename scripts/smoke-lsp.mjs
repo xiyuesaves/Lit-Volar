@@ -305,8 +305,11 @@ try {
   const firstUpdatedItem = lifecycleItems.find(item => item.label === 'firstUpdated');
   assert.ok(firstUpdatedItem, 'Lit lifecycle completion did not include firstUpdated');
   assert.match(firstUpdatedItem.textEdit?.newText ?? firstUpdatedItem.insertText ?? '',
-    /protected override firstUpdated\(changedProperties: import\('@lit\/reactive-element'\)\.PropertyValues<this>\)/,
+    /protected override firstUpdated\(changedProperties: PropertyValues<this>\)/,
     'Lit lifecycle completion did not insert the TypeScript override signature');
+  assert.equal(firstUpdatedItem.additionalTextEdits?.[0]?.newText,
+    "import type { PropertyValues } from 'lit';\n",
+    'Lit lifecycle completion did not add the PropertyValues type import');
 
   const ordinaryLifecycleItems = await completionAt(
     'class OrdinaryClass { fir| }',

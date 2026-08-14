@@ -318,6 +318,27 @@ try {
   assert.ok(!labels(ordinaryLifecycleItems).includes('firstUpdated'),
     'Lit lifecycle completion leaked into an ordinary class');
 
+  const scopedClassDefinitions = await requestAt(
+    [
+      "import { css, html, LitElement } from 'lit';",
+      'class OtherCard extends LitElement {',
+      '  static styles = css`.shared { color: red; }`;',
+      '}',
+      'class CurrentCard extends LitElement {',
+      '  static styles = css`.shared { color: blue; } .wrapper .shared { display: block; }`;',
+      '  render() { return html`<div class="shared| wrapper"></div>`; }',
+      '}',
+    ].join('\n'),
+    'samples/scoped-class-definition.ts',
+    'textDocument/definition',
+  );
+  assert.ok(Array.isArray(scopedClassDefinitions) && scopedClassDefinitions.length === 2,
+    'Scoped HTML class definition did not return every matching component selector');
+  assert.ok(scopedClassDefinitions.every(item =>
+    (item.targetUri ?? item.uri)?.endsWith('/samples/scoped-class-definition.ts')
+      && (item.targetSelectionRange ?? item.range)?.start.line === 5),
+  'Scoped HTML class definition leaked to a sibling component');
+
   const projectTagItems = await completionAtUntilLabel(
     "import { html } from 'lit'; const view = html`<pro|`;",
     'samples/project-consumer.ts',

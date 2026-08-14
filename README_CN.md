@@ -55,6 +55,7 @@ Lit Volar 是一个 VS Code 扩展，为 Lit tagged template 提供 HTML、CSS�
 - 每条规则都支持 `off`、`warning`、`error`；显式 `litVolar.rules` 优先级最高。
 - analyzer fix 会转换为 LSP Quick Fix，例如缺失导入和注册声明修复。
 - 定义跳转和重命名覆盖模板标签、结束标签、property、event、CSS 元数据、decorator、注册字符串和 `HTMLElementTagNameMap`。
+- Lit HTML 模板中的静态 class 可以跳转到所属组件样式、显式引用的共享样式、项目自定义基类样式和内联 `<style>` 中的全部同名选择器；无关组件作用域会被排除。
 - 普通 TypeScript/JavaScript 引用高亮继续由 VS Code 内置语言服务负责。
 
 ### 刷新与性能

@@ -25,6 +25,7 @@ import type { ComponentDeclaration, ComponentDefinition, ComponentEvent, Compone
 import { BindingRegistry, type BindingMetadata } from './bindingRegistry';
 import { loadCemProjectData, resolveConfigPaths, type CemFeature, type CemProjectData } from './cemData';
 import { getConfigVersion, type LitVolarConfig } from './config';
+import { findLitCssClassDefinitions, htmlClassTokenAt } from './cssClassDefinitions';
 import { litLifecycleCompletions } from './lifecycleCompletion';
 import { typescriptInjectionKeys } from './typescriptBridge';
 
@@ -343,6 +344,34 @@ export function createLitProjectService(
           const offset = source.sourceOffset(position);
           if (offset === undefined) return;
           return safely([], () => {
+            const classToken = document.languageId === 'html'
+              ? htmlClassTokenAt(document.getText(), documentOffset)
+              : undefined;
+            const program = languageService.getProgram();
+            if (classToken && program) {
+              const classDefinitions = findLitCssClassDefinitions(
+                typescript,
+                program,
+                source.file,
+                offset,
+                classToken.name,
+                config,
+              );
+              if (classDefinitions.length > 0) {
+                const originSelectionRange = offsetsToRange(document, classToken.start, classToken.end);
+                return classDefinitions.flatMap(target => {
+                  const targetFile = program.getSourceFile(target.fileName);
+                  if (!targetFile) return [];
+                  const targetRange = sourceFileRange(targetFile, target.start, target.end);
+                  return [{
+                    targetUri: uriConverter.asUri(target.fileName).toString(),
+                    targetRange,
+                    targetSelectionRange: targetRange,
+                    originSelectionRange,
+                  }];
+                });
+              }
+            }
             const definition = analyzer.getDefinitionAtPosition(source.file, offset);
             if (definition) {
               const originSelectionRange = source.documentRange(definition.fromRange.start, definition.fromRange.end);

@@ -55,6 +55,7 @@ The extension uses the TypeScript SDK selected by VS Code. It supports TypeScrip
 - Every rule accepts `off`, `warning`, or `error`; an explicit `litVolar.rules` entry overrides both profiles.
 - Analyzer fixes are exposed as LSP quick fixes, including missing imports and registration fixes where supported.
 - Definitions and rename work across template tags, closing tags, properties, events, CSS metadata, decorators, registrations, and `HTMLElementTagNameMap`.
+- Static class names in Lit HTML templates navigate to every matching selector in the owning component's styles, explicitly referenced shared styles, project base classes, and inline `<style>` blocks. Unrelated component scopes are excluded.
 - Ordinary TypeScript/JavaScript references and document highlights remain provided by VS Code's built-in language services.
 
 ### Refresh and performance

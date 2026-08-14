@@ -2,7 +2,7 @@
   "name": "lit-volar",
   "displayName": "Lit Volar",
   "description": "HTML, CSS, and SVG language tooling for Lit tagged templates powered by Volar.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "packageManager": "pnpm@10.15.1",
   "publisher": "xiyuesaves",
   "license": "MIT",

@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   build:
-    name: Verify, package, and publish
+    name: Verify and package
     runs-on: ubuntu-latest
 
     steps:
@@ -44,16 +44,17 @@ jobs:
       - name: Verify extension
         run: xvfb-run -a pnpm verify
 
-      - name: Prepare Marketplace release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      - name: Prepare package metadata
+        id: package
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
         env:
-          VSCE_PUBLISHER: ${{ vars.VSCE_PUBLISHER }}
+          IS_TAG: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
         run: |
-          node -e "const fs = require('node:fs'); const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8')); const tagVersion = process.env.GITHUB_REF_NAME.slice(1); if (tagVersion !== manifest.version) throw new Error('Tag version ' + tagVersion + ' does not match package.json version ' + manifest.version); if (!process.env.VSCE_PUBLISHER) throw new Error('Repository variable VSCE_PUBLISHER is required'); manifest.publisher = process.env.VSCE_PUBLISHER; fs.writeFileSync('package.json', JSON.stringify(manifest, null, 2) + '\n');"
+          node -e "const fs = require('node:fs'); const manifest = require('./package.json'); const tagVersion = process.env.GITHUB_REF_NAME.replace(/^v/, ''); if (process.env.IS_TAG === 'true' && tagVersion !== manifest.version) throw new Error('Tag version ' + tagVersion + ' does not match package.json version ' + manifest.version); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'version=' + manifest.version + '\nvsix=lit-volar-' + manifest.version + '.vsix\n');"
 
       - name: Package extension
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-        run: pnpm exec vsce package --no-dependencies
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+        run: pnpm exec vsce package --no-dependencies --out "${{ steps.package.outputs.vsix }}"
 
       - name: Upload VSIX
         if: github.event_name == 'workflow_dispatch'
@@ -64,8 +65,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish to Visual Studio Marketplace
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      - name: Stage GitHub Release asset
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-vsix-${{ github.sha }}
+          path: '${{ steps.package.outputs.vsix }}'
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download VSIX
+        uses: actions/download-artifact@v7
+        with:
+          name: release-vsix-${{ github.sha }}
+
+      - name: Create or update GitHub Release
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: pnpm exec vsce publish --packagePath "lit-volar-${GITHUB_REF_NAME#v}.vsix"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" ./*.vsix --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" ./*.vsix --verify-tag --generate-notes --title "Lit Volar ${GITHUB_REF_NAME#v}" --repo "$GITHUB_REPOSITORY"
+          fi

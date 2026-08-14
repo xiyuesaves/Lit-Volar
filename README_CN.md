@@ -152,12 +152,7 @@ pnpm watch          # watch 模式构建
 
 GitHub Actions 会验证每次 push 和 pull request。手动运行 **Build** workflow 时会打包扩展，并将生成的 VSIX 作为 workflow artifact 保留 14 天。
 
-发布到 Marketplace 前，需要配置以下仓库设置：
-
-- Variable `VSCE_PUBLISHER`：在 Visual Studio Marketplace 注册的 Publisher ID。
-- Secret `VSCE_PAT`：拥有扩展发布权限的 Marketplace personal access token。
-
-发布新版本时，先更新 `package.json#version` 并提交，再推送匹配的 `v<version>` tag，例如 `v0.2.0`。如果 tag 与扩展清单版本不一致，workflow 会拒绝发布。
+发布 GitHub Release 时，先更新 `package.json#version` 并提交，再推送匹配的 `<version>` 或 `v<version>` tag，例如 `v0.2.0`。workflow 会验证扩展、生成 VSIX，并将其附加到自动生成的 GitHub Release。如果 tag 与扩展清单版本不一致，workflow 会拒绝发布。该流程使用仓库自动提供的 `GITHUB_TOKEN`，不需要配置自定义 Repository Secret。
 
 Extension Host 测试默认使用 VS Code `1.90.2`，首次运行时会下载测试版本。也可以设置 `VSCODE_EXECUTABLE_PATH` 使用本机已安装的 VS Code。
 

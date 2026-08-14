@@ -46,6 +46,7 @@ Lit Volar 是一个 VS Code 扩展，为 Lit tagged template 提供 HTML、CSS�
 - CEM 可提供补全、Hover，以及存在源码路径时的定义跳转。
 - CEM 类型使用 TypeScript 语法展示；可信的基础类型、字面量联合和数组类型参与诊断，无法解析语义的复杂引用展示但按 `any` 分析。
 - 组件 Hover 使用 TypeScript 风格的高亮声明，显示真实 class 名称、全部公开 reactive property 和公开事件，不显示框架成员或生成的 attribute 注释。
+- 在 `LitElement` 和 `ReactiveElement` 类体中提供 Lit 生命周期方法补全，按 TypeScript/JavaScript 生成对应代码片段，并隐藏当前类已实现的方法。
 
 ### 诊断、修复与导航
 

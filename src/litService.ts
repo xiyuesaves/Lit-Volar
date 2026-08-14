@@ -25,6 +25,7 @@ import type { ComponentDeclaration, ComponentDefinition, ComponentEvent, Compone
 import { BindingRegistry, type BindingMetadata } from './bindingRegistry';
 import { loadCemProjectData, resolveConfigPaths, type CemFeature, type CemProjectData } from './cemData';
 import { getConfigVersion, type LitVolarConfig } from './config';
+import { litLifecycleCompletions } from './lifecycleCompletion';
 import { typescriptInjectionKeys } from './typescriptBridge';
 
 interface UriConverter {
@@ -200,9 +201,15 @@ export function createLitProjectService(
           if (config.dontShowSuggestions) return { isIncomplete: false, items: [] };
           const source = sourceFileForDocument(document, token);
           if (!source || token.isCancellationRequested) return;
-          const documentOffset = document.offsetAt(position);
           const offset = source.sourceOffset(position);
           if (offset === undefined) return;
+          if (isServiceLanguage(document.languageId) && document.languageId !== 'html' && document.languageId !== 'css') {
+            const program = languageService.getProgram();
+            if (!program) return;
+            const items = litLifecycleCompletions(typescript, program, source.file, offset, document);
+            return items ? { isIncomplete: false, items } : undefined;
+          }
+          const documentOffset = document.offsetAt(position);
           return safely({ isIncomplete: false, items: [] }, () => {
             const analyzerCompletions = analyzer.getCompletionsAtPosition(source.file, offset) ?? [];
             const tagName = enclosingStartTag(document.getText(), documentOffset);

@@ -46,6 +46,7 @@ The extension uses the TypeScript SDK selected by VS Code. It supports TypeScrip
 - CEM supports completion, hover, and definition navigation when a source path is available.
 - CEM types use TypeScript syntax for display. Reliable primitive, literal-union, and array types participate in diagnostics; unresolved complex references are displayed but treated as `any` for analysis.
 - Component hover uses TypeScript-style highlighted declarations with the concrete class name, all public reactive properties, and public events. Framework members and generated attribute comments are omitted.
+- Lit lifecycle method completion is available in `LitElement` and `ReactiveElement` class bodies, with TypeScript- or JavaScript-aware snippets and duplicate-method suppression.
 
 ### Diagnostics, fixes, and navigation
 

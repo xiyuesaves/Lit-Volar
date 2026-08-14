@@ -298,6 +298,23 @@ try {
   );
   assert.equal(interpolationItems.length, 0, 'Volar should defer interpolation completion to TypeScript');
 
+  const lifecycleItems = await completionAt(
+    "import { LitElement } from 'lit'; class LifecycleCard extends LitElement { fir| }",
+    'samples/lifecycle-card.ts',
+  );
+  const firstUpdatedItem = lifecycleItems.find(item => item.label === 'firstUpdated');
+  assert.ok(firstUpdatedItem, 'Lit lifecycle completion did not include firstUpdated');
+  assert.match(firstUpdatedItem.textEdit?.newText ?? firstUpdatedItem.insertText ?? '',
+    /protected override firstUpdated\(changedProperties: import\('@lit\/reactive-element'\)\.PropertyValues<this>\)/,
+    'Lit lifecycle completion did not insert the TypeScript override signature');
+
+  const ordinaryLifecycleItems = await completionAt(
+    'class OrdinaryClass { fir| }',
+    'samples/ordinary-class.ts',
+  );
+  assert.ok(!labels(ordinaryLifecycleItems).includes('firstUpdated'),
+    'Lit lifecycle completion leaked into an ordinary class');
+
   const projectTagItems = await completionAtUntilLabel(
     "import { html } from 'lit'; const view = html`<pro|`;",
     'samples/project-consumer.ts',

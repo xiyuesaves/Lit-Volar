@@ -18,6 +18,7 @@ import {
   type LitCodeFix,
   type LitCompletion,
   type LitDefinitionTarget,
+  type LitDiagnostic,
 } from 'lit-analyzer';
 import type ts from 'typescript';
 import { URI } from 'vscode-uri';
@@ -314,6 +315,12 @@ export function createLitProjectService(
           if (!source) return;
           return safely([], () => analyzer.getDiagnosticsInFile(source.file)
             .filter(diagnostic => diagnostic.source !== 'no-invalid-css')
+            .filter(diagnostic => !isSameFileComponentMissingImport(
+              diagnostic,
+              source.file,
+              analyzerContext.definitionStore,
+              typescript,
+            ))
             .flatMap(diagnostic => {
               const range = source.documentRange(diagnostic.location.start, diagnostic.location.end);
               return range ? [{
@@ -430,6 +437,24 @@ export function createLitProjectService(
       };
     },
   };
+}
+
+function isSameFileComponentMissingImport(
+  diagnostic: LitDiagnostic,
+  sourceFile: ts.SourceFile,
+  definitionStore: { getDefinitionForTagName(tagName: string): ComponentDefinition | undefined },
+  typescript: typeof ts,
+): boolean {
+  if (diagnostic.source !== 'no-missing-import') return false;
+  const tagName = sourceFile.text.slice(diagnostic.location.start, diagnostic.location.end);
+  if (!/^[\w.-]+$/.test(tagName)) return false;
+  const definitionFile = definitionStore.getDefinitionForTagName(tagName)?.sourceFile;
+  if (!definitionFile) return false;
+  const canonical = (fileName: string): string => {
+    const resolved = path.resolve(fileName).replace(/\\/g, '/');
+    return typescript.sys.useCaseSensitiveFileNames ? resolved : resolved.toLowerCase();
+  };
+  return canonical(definitionFile.fileName) === canonical(sourceFile.fileName);
 }
 
 function cemDataSignature(data: CemProjectData): string {

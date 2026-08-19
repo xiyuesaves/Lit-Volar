@@ -514,6 +514,21 @@ try {
   assert.ok(analysis.diagnostics.some(item => item.code === 'no-missing-import'), 'Missing import diagnostic was not reported');
   assert.ok(analysis.actions.some(action => action.edit), 'Missing import quick fix did not contain a WorkspaceEdit');
 
+  const sameFileComponentAnalysis = await diagnosticsAndActions(
+    [
+      "import { html, LitElement } from 'lit';",
+      'class InlineChild extends LitElement {}',
+      "customElements.define('inline-child', InlineChild);",
+      'class InlineParent extends LitElement {',
+      '  render() { return html`<inline-child></inline-child>`; }',
+      '}',
+      "customElements.define('inline-parent', InlineParent);|",
+    ].join('\n'),
+    'samples/same-file-components.ts',
+  );
+  assert.ok(!sameFileComponentAnalysis.diagnostics.some(item => item.code === 'no-missing-import'),
+    'A component declared in the same source file was incorrectly reported as missing an import');
+
   const bindingAnalysis = await diagnosticsAndActions(
     "import { html } from 'lit'; import './project-card'; const view = html`<project-card .title=${123}|></project-card>`;",
     'samples/project-consumer.ts',
